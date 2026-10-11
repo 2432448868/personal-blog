@@ -15,7 +15,7 @@ health.get('/health', async (c) => {
     databaseMessage = error instanceof Error ? error.message : '未知错误';
   }
   checks.bucket = Boolean(c.env.BUCKET);
-  const status = checks.database && checks.bucket ? 'ok' : 'degraded';
+  const status = checks.database ? 'ok' : 'degraded';
   return c.json(
     ok({
       status,

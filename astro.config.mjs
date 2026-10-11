@@ -4,7 +4,7 @@ import cloudflare from '@astrojs/cloudflare';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  site: 'https://blog.example.com',
+  site: process.env.SITE_URL ?? 'https://personal-blog.stock-backend-wkl.workers.dev',
   output: 'server',
   adapter: cloudflare({
     configPath: './wrangler.jsonc',
