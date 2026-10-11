@@ -7,8 +7,8 @@
 - 开始时间：2026-10-11
 - 结束时间：2026-10-11
 - 性质：个人需求（非公司项目）
-- 约束：本地开发，不推送代码；不删用户已有资产
-- 当前状态：✅ 本地编码完成
+- 约束：本地开发完成后再发布；不删用户已有资产
+- 当前状态：✅ 已上线（GitHub 已推送 + Cloudflare Workers 已部署）
 
 ## 1. 流水线槽位
 
@@ -23,7 +23,7 @@
 | 06 | `06-code-review.md` | ✅ | 审查通过 |
 | 07 | `07-self-test-checklist.md` | ✅ | 自动化 40/40 |
 | 08 | `08-frontend-integration.md` | ✅ | 接口契约 |
-| 09 | `09-release-checklist.md` | ✅ | 上线清单（云端命令仅文档化） |
+| 09 | `09-release-checklist.md` | ✅ | 上线清单 + 本次实际执行与验证结果 |
 
 ## 2. 关键裁决点
 
@@ -34,7 +34,8 @@
 | 3 | 内容页渲染 | 静态优先 + SSR，发布即时生效 |
 | 4 | 搜索 | 客户端索引（博客规模足够） |
 | 5 | 文档落盘 | 固定槽位 00~09；证据类文件另存 `~/.agents/evidence/personal-blog/` |
-| 6 | Git | 不提交、不推送 |
+| 6 | Git | 本地开发阶段不提交；牢大确认后提交并推送 GitHub |
+| 7 | R2 | 账号未开通，先移除绑定上线；开通后回补，封面上传届时恢复 |
 
 ## 3. 质量门禁
 
@@ -45,7 +46,10 @@
 | 端到端 | `npm run smoke` | 40 / 40 |
 | UI 设计审查 | `avoid-ai-design` 扫描 | 0 P0 / 0 P1（仅 1 条 P2 有意保留） |
 | UI 复评 | CDP 真实浏览器 | 亮/暗 18 页渲染通过；3 日间 + 3 夜间主题、字体/动效实测，0 运行时异常 |
+| 线上验证 | 代理访问生产域名 | 15 条路由全 200；`/api/health` 返回 `status=ok` |
 
 ## 4. 交付结论
 
-本地编码与验证完成，可以交付。生产部署需牢大自行配置真实密钥并执行 `09-release-checklist.md`。
+本地编码、验证、GitHub 推送与 Cloudflare Workers 部署均已完成。线上地址 `https://personal-blog.stock-backend-wkl.workers.dev`，仓库 `https://github.com/2432448868/personal-blog`（private）。
+
+剩余两项人工准备（不阻塞访问，仅影响登录与封面上传）：Cloudflare 控制台开通 R2、创建 GitHub OAuth App 并写入 secrets。详见 `09-release-checklist.md`。
