@@ -1,0 +1,27 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { listCategories } from '@/server/db/content';
+
+const db = env.DB;
+const categories = await listCategories(db);
+---
+
+<BaseLayout title="分类" description="全部分类" active="categories">
+  <div class="rule-label">分类索引</div>
+  {categories.length === 0 ? (
+    <p class="mt-4 py-12 text-sm text-muted">还没有分类。</p>
+  ) : (
+    <div class="mt-6 border-t border-line">
+      {categories.map((category) => (
+        <a href={`/post?category=${category.slug}`} class="group flex items-baseline gap-4 border-b border-line py-5 transition-colors hover:text-accent">
+          <h2 class="text-lg font-semibold tracking-tight">{category.name}</h2>
+          <span class="font-mono text-xs text-muted tabular-nums">{category.postCount ?? 0} 篇</span>
+          <p class="ml-auto hidden max-w-md text-sm text-muted sm:block">{category.description || ''}</p>
+        </a>
+      ))}
+    </div>
+  )}
+</BaseLayout>
+
+<!-- avoid-ai-design-ignore-file: K7 — 键盘焦点样式为全局 :focus-visible（globals.css） -->

@@ -1,0 +1,87 @@
+---
+import { env } from 'cloudflare:workers';
+import '@/styles/globals.css';
+import Header from '@/components/Header.astro';
+import Footer from '@/components/Footer.astro';
+import { getSiteProfile } from '@/server/db/settings';
+
+interface Props {
+  title: string;
+  description?: string;
+  active?: string;
+  type?: 'website' | 'article';
+  showReadingTools?: boolean;
+  canonical?: string;
+}
+
+const { title, description, active = '', type = 'website', showReadingTools = false, canonical } = Astro.props;
+
+let profile = null;
+try {
+  profile = await getSiteProfile(env.DB);
+} catch {
+  profile = null;
+}
+
+const siteName = profile?.name ?? '我的个人博客';
+const siteDescription = description ?? profile?.bio ?? '记录技术、阅读和生活的个人博客。';
+const canonicalUrl = canonical ?? new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin).toString();
+const fullTitle = title === siteName ? title : `${title} · ${siteName}`;
+const socialLinks = profile?.socialLinks ?? [];
+---
+
+<!doctype html>
+<html lang="zh-CN" class="scroll-smooth">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={siteDescription} />
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/fonts/975maru/font.css" />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/975maru/L1_4e00_192.woff2" crossorigin="anonymous" />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/975maru/L1_4fea_192.woff2" crossorigin="anonymous" />
+    <meta property="og:type" content={type} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={siteDescription} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:site_name" content={siteName} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#f5f2ec" />
+    <link rel="alternate" type="application/rss+xml" title={siteName} href="/rss.xml" />
+    <script is:inline>
+      (function () {
+        var LIGHT = ['xuanzhi', 'taichen', 'dianqing'];
+        var DARK = ['moye', 'songyan', 'xingye'];
+        var ALL = LIGHT.concat(DARK);
+        var id = null;
+        try {
+          var stored = localStorage.getItem('blog-theme');
+          if (stored === 'light') id = LIGHT[0];
+          else if (stored === 'dark') id = DARK[0];
+          else if (stored && ALL.indexOf(stored) !== -1) id = stored;
+        } catch (e) {
+          /* 忽略存储异常 */
+        }
+        if (!id) id = window.matchMedia('(prefers-color-scheme: dark)').matches ? DARK[0] : LIGHT[0];
+        var root = document.documentElement;
+        root.setAttribute('data-theme', id);
+        if (DARK.indexOf(id) !== -1) root.classList.add('dark');
+        var surfaceMap = { xuanzhi: '#f5f2ec', taichen: '#f2f4ec', dianqing: '#f1f3f7', moye: '#131418', songyan: '#101413', xingye: '#10131b' };
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', surfaceMap[id] || surfaceMap.xuanzhi);
+      })();
+    </script>
+    <slot name="head" />
+  </head>
+  <body class="min-h-screen">
+    <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-ink">跳到正文</a>
+    <Header siteName={siteName} active={active} showReadingTools={showReadingTools} />
+    <main id="main" class="mx-auto max-w-5xl px-4 py-8 md:py-10">
+      <slot />
+    </main>
+    <Footer siteName={siteName} icp={profile?.icp} startedAt={profile?.startedAt} socialLinks={socialLinks} />
+    <slot name="scripts" />
+  </body>
+</html>

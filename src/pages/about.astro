@@ -1,0 +1,62 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getSiteProfile } from '@/server/db/settings';
+import { getSiteSummary } from '@/server/db/content';
+import { renderMarkdown } from '@/lib/markdown';
+import { formatNumber } from '@/lib/format';
+
+const db = env.DB;
+const [profile, summary] = await Promise.all([getSiteProfile(db), getSiteSummary(db)]);
+const about = profile.about ? renderMarkdown(profile.about) : '';
+---
+
+<BaseLayout title="关于" description={profile.bio} active="about">
+  <div class="rule-label">关于</div>
+
+  <section class="mt-6 grid gap-8 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-10">
+    <div class="space-y-3">
+      {profile.avatar && <img src={profile.avatar} alt="" width={140} height={140} class="h-28 w-28 rounded-full border border-line object-cover" loading="lazy" />}
+      <div>
+        <h1 class="text-lg font-semibold tracking-tight">{profile.name}</h1>
+        <p class="mt-1 text-sm leading-relaxed text-muted">{profile.bio}</p>
+      </div>
+      {profile.socialLinks.length > 0 && (
+        <ul class="flex flex-wrap gap-1.5 pt-1">
+          {profile.socialLinks.map((link) => (
+            <li><a href={link.url} class="chip" target="_blank" rel="noopener noreferrer">{link.label}</a></li>
+          ))}
+        </ul>
+      )}
+    </div>
+
+    <div class="space-y-6 md:border-l md:border-line md:pl-10">
+      {profile.motto && <blockquote class="text-base text-accent">「{profile.motto}」</blockquote>}
+      {about ? (
+        <div class="prose-editorial" data-convertible set:html={about} />
+      ) : (
+        <p class="text-sm text-muted">博主还没有填写「关于我」的内容，可在后台「站点配置」中补充。</p>
+      )}
+    </div>
+  </section>
+
+  <section class="mt-12">
+    <div class="rule-label">站点数据</div>
+    <dl class="mt-3 grid grid-cols-2 gap-x-8 sm:grid-cols-4">
+      {[
+        { label: '文章', value: summary.postCount },
+        { label: '累计字数', value: summary.totalWords },
+        { label: '累计阅读', value: summary.totalViews },
+        { label: '评论 + 留言', value: summary.commentCount + summary.guestbookCount }
+      ].map((item) => (
+        <div class="border-t border-line pt-3">
+          <dt class="text-xs text-muted">{item.label}</dt>
+          <dd class="mt-1 font-mono text-xl font-semibold tabular-nums">{formatNumber(item.value)}</dd>
+        </div>
+      ))}
+    </dl>
+    {profile.startedAt && <p class="mt-4 text-xs text-muted">站点自 {profile.startedAt} 开始记录。</p>}
+  </section>
+</BaseLayout>
+
+<!-- avoid-ai-design-ignore-file: K7 — 键盘焦点样式为全局 :focus-visible（globals.css） -->

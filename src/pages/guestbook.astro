@@ -1,0 +1,21 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import GuestbookSection from '@/components/GuestbookSection.tsx';
+import { listGuestbook } from '@/server/db/interactions';
+import type { GuestbookItem } from '@/types/domain';
+
+const db = env.DB;
+const items = await listGuestbook(db);
+const total = items.reduce(function count(acc: number, item: GuestbookItem): number {
+  return acc + 1 + (item.replies ?? []).reduce(count, 0);
+}, 0);
+---
+
+<BaseLayout title="留言板" description="留言与交流" active="guestbook">
+  <div class="rule-label">留言板</div>
+  <p class="mt-3 max-w-xl text-sm leading-relaxed text-muted">欢迎留下足迹。留言经博主审核后展示，支持嵌套回复。</p>
+  <div class="mt-8">
+    <GuestbookSection client:visible initialItems={items} initialTotal={total} />
+  </div>
+</BaseLayout>

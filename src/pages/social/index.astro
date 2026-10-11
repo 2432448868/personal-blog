@@ -1,0 +1,32 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getSiteSettings } from '@/server/db/settings';
+import { safeJsonParse } from '@/lib/format';
+
+const db = env.DB;
+const settings = await getSiteSettings(db);
+const friends = safeJsonParse<Array<{ name: string; url: string; desc?: string }>>(settings['site.friends'] ?? '[]', []);
+---
+
+<BaseLayout title="友人帐" description="友情链接">
+  <div class="rule-label">友人帐</div>
+  {friends.length === 0 ? (
+    <div class="mt-6 border-l-2 border-line pl-4 text-sm text-muted">
+      <p>还没有配置友链。</p>
+      <p class="mt-2 text-xs">在 D1 的 <code class="font-mono text-[0.8em]">site_settings</code> 中写入 <code class="font-mono text-[0.8em]">site.friends</code>（JSON 数组，字段 name / url / desc）即可展示。</p>
+    </div>
+  ) : (
+    <div class="mt-6 border-t border-line">
+      {friends.map((friend) => (
+        <a href={friend.url} class="group flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-line py-5 transition-colors hover:text-accent" target="_blank" rel="noopener noreferrer">
+          <h2 class="text-base font-semibold tracking-tight">{friend.name}</h2>
+          <p class="text-sm text-muted">{friend.desc || friend.url}</p>
+          <span class="ml-auto font-mono text-xs text-muted">↗</span>
+        </a>
+      ))}
+    </div>
+  )}
+</BaseLayout>
+
+<!-- avoid-ai-design-ignore-file: K7 — 键盘焦点样式为全局 :focus-visible（globals.css） -->

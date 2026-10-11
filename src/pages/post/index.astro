@@ -1,0 +1,83 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import ArticleCard from '@/components/ArticleCard.astro';
+import { listCategories, listPosts, listTags } from '@/server/db/content';
+
+const db = env.DB;
+const params = Astro.url.searchParams;
+const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
+const category = params.get('category') ?? undefined;
+const tag = params.get('tag') ?? undefined;
+const year = params.get('year') ?? undefined;
+const month = params.get('month') ?? undefined;
+
+const [result, categories, tags] = await Promise.all([
+  listPosts(db, { page, pageSize: 10, category, tag, year, month, status: 'published' }),
+  listCategories(db),
+  listTags(db)
+]);
+
+const filters = [
+  ...(category ? [{ label: `分类：${categories.find((item) => item.slug === category)?.name ?? category}`, key: 'category' }] : []),
+  ...(tag ? [{ label: `标签：${tags.find((item) => item.slug === tag)?.name ?? tag}`, key: 'tag' }] : []),
+  ...(year ? [{ label: `时间：${year}${month ? `-${month}` : ''}`, key: month ? 'month' : 'year' }] : [])
+];
+
+function pageHref(target: number): string {
+  const next = new URLSearchParams(params);
+  next.set('page', String(target));
+  return `/post?${next.toString()}`;
+}
+---
+
+<BaseLayout title="文章" description="全部文章列表" active="post">
+  <div class="rule-label">文章索引</div>
+
+  {filters.length > 0 && (
+    <div class="mt-4 flex flex-wrap items-center gap-2">
+      {filters.map((item) => <span class="chip border-accent text-accent">{item.label}</span>)}
+      <a href="/post" class="text-xs text-muted hover:text-accent">清除筛选</a>
+    </div>
+  )}
+
+  <div class="mt-6 grid gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_15rem]">
+    <div>
+      {result.items.length === 0 ? (
+        <p class="py-12 text-sm text-muted">没有符合条件的文章。</p>
+      ) : (
+        <div>{result.items.map((post) => <ArticleCard post={post} />)}</div>
+      )}
+
+      {result.totalPages > 1 && (
+        <nav class="mt-6 flex items-center justify-center gap-2 text-sm" aria-label="分页">
+          {page > 1 && <a href={pageHref(page - 1)} class="btn">上一页</a>}
+          <span class="px-2 text-muted">第 {result.page} / {result.totalPages} 页</span>
+          {page < result.totalPages && <a href={pageHref(page + 1)} class="btn">下一页</a>}
+        </nav>
+      )}
+    </div>
+
+    <aside class="space-y-6">
+      <section>
+        <div class="rule-label">分类</div>
+        <ul class="mt-3 space-y-1 text-sm">
+          {categories.map((item) => (
+            <li class="flex items-center justify-between border-b border-line py-1.5">
+              <a href={`/post?category=${item.slug}`} class="hover:text-accent">{item.name}</a>
+              <span class="text-xs text-muted tabular-nums">{item.postCount ?? 0}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section>
+        <div class="rule-label">标签</div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          {tags.map((item) => <a href={`/post?tag=${item.slug}`} class="chip">#{item.name}</a>)}
+        </div>
+      </section>
+    </aside>
+  </div>
+</BaseLayout>
+
+<!-- avoid-ai-design-ignore-file: K7 — 键盘焦点样式为全局 :focus-visible（globals.css） -->

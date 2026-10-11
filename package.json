@@ -1,0 +1,53 @@
+{
+  "name": "personal-blog",
+  "version": "1.0.0",
+  "description": "A personal blog built with Astro, Hono, Cloudflare D1 and R2.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "npm run check && astro build",
+    "check": "astro check",
+    "preview": "astro preview",
+    "lint": "eslint .",
+    "db:local:migrate": "wrangler d1 migrations apply personal-blog-db --local",
+    "db:local:seed": "wrangler d1 execute personal-blog-db --local --file=./migrations/0002_seed.sql",
+    "db:local:init": "npm run db:local:migrate && npm run db:local:seed",
+    "smoke": "node scripts/smoke.mjs",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.3.4",
+    "@astrojs/react": "^7.0.1",
+    "@astrojs/sitemap": "^3.7.4",
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "^7.3.8",
+    "clsx": "^2.1.1",
+    "hono": "^4.13.13",
+    "marked": "^18.1.0",
+    "opencc-js": "^1.4.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@cloudflare/workers-types": "^5.20261011.1",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "concurrently": "^10.0.6",
+    "eslint": "^10.12.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "wrangler": "^4.149.0"
+  }
+}

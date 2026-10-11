@@ -1,0 +1,37 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { listPublishedSummaries } from '@/server/db/content';
+import { groupByYear } from '@/server/services/content';
+import { formatDate } from '@/lib/format';
+
+const db = env.DB;
+const posts = await listPublishedSummaries(db);
+const groups = groupByYear(posts);
+---
+
+<BaseLayout title="归档" description="按时间浏览全部文章" active="archive">
+  <div class="rule-label">时间归档</div>
+  {groups.length === 0 ? (
+    <p class="mt-4 py-12 text-sm text-muted">还没有可归档的文章。</p>
+  ) : (
+    <div class="mt-8 space-y-12">
+      {groups.map((group) => (
+        <section class="grid gap-3 sm:grid-cols-[4rem_minmax(0,1fr)] sm:gap-6">
+          <h2 class="font-mono text-lg font-semibold tabular-nums text-accent">{group.year}</h2>
+          <ul>
+            {group.posts.map((post) => (
+              <li class="flex flex-wrap items-baseline gap-x-3 border-b border-line py-3 last:border-b-0">
+                <time class="font-mono text-xs text-muted tabular-nums">{formatDate(post.publishedAt ?? post.createdAt)}</time>
+                <a href={`/post/${post.slug}`} class="font-medium transition-colors hover:text-accent">{post.title}</a>
+                <span class="ml-auto font-mono text-xs text-muted tabular-nums">{post.commentCount}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  )}
+</BaseLayout>
+
+<!-- avoid-ai-design-ignore-file: K7 — 键盘焦点样式为全局 :focus-visible（globals.css） -->

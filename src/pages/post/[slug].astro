@@ -1,0 +1,107 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import ArticleCard from '@/components/ArticleCard.astro';
+import CommentSection from '@/components/CommentSection.tsx';
+import { listComments } from '@/server/db/interactions';
+import { getPublishedPost } from '@/server/services/content';
+import { renderMarkdown } from '@/lib/markdown';
+import { formatDate, readingTime } from '@/lib/format';
+import PostCover from '@/components/PostCover.astro';
+import type { CommentItem } from '@/types/domain';
+
+const db = env.DB;
+const slug = Astro.params.slug ?? '';
+const post = await getPublishedPost(db, slug, true);
+
+if (!post) {
+  return Astro.redirect('/404');
+}
+
+const comments = await listComments(db, post.id);
+const total = comments.reduce(function count(acc: number, item: CommentItem): number {
+  return acc + 1 + (item.replies ?? []).reduce(count, 0);
+}, 0);
+
+const rendered = renderMarkdown(post.content);
+const publishedAt = post.publishedAt ?? post.createdAt;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: post.title,
+  datePublished: publishedAt,
+  dateModified: post.updatedAt,
+  author: { '@type': 'Person', name: post.authorName },
+  description: post.summary,
+  mainEntityOfPage: new URL(`/post/${post.slug}`, Astro.site ?? Astro.url.origin).toString()
+};
+---
+
+<BaseLayout title={post.title} description={post.summary || post.title} active="post" type="article" showReadingTools>
+  <script type="application/ld+json" slot="head" set:html={JSON.stringify(jsonLd)} />
+
+  <article class="mx-auto max-w-3xl">
+    <header class="border-b border-line pb-7">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.72rem] tabular-nums text-muted">
+        <time datetime={publishedAt}>{formatDate(publishedAt)}</time>
+        <span class="text-line-strong">/</span>
+        <span>{readingTime(post.wordCount)}</span>
+        <span class="text-line-strong">/</span>
+        <span>{post.viewCount} 阅读</span>
+        <span class="text-line-strong">/</span>
+        <span>{total} 评论</span>
+      </div>
+      <h1 class="mt-4 text-[1.7rem] font-semibold leading-[1.3] tracking-tight md:text-[2.1rem]">{post.title}</h1>
+      {post.summary && <p class="mt-3 text-sm leading-relaxed text-muted">{post.summary}</p>}
+      <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted">
+        {post.categories.map((category) => <a href={`/post?category=${category.slug}`} class="transition-colors hover:text-accent">{category.name}</a>)}
+        {post.tags.map((tag) => <a href={`/post?tag=${tag.slug}`} class="transition-colors hover:text-accent">#{tag.name}</a>)}
+      </div>
+    </header>
+
+    <div class="mt-7 overflow-hidden rounded-[3px] border border-line bg-paper-soft">
+      <PostCover
+        src={post.coverImage}
+        title={post.title}
+        alt={`${post.title} 封面`}
+        loading="eager"
+        class="aspect-[16/9] w-full object-cover"
+      />
+    </div>
+
+    <div class="prose-editorial mt-8" data-convertible set:html={rendered} />
+
+    <footer class="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-sm text-muted no-print">
+      <p class="font-mono text-xs">{post.authorName}</p>
+      <div class="flex gap-2">
+        <button type="button" class="btn" data-share="copy">复制链接</button>
+        <a class="btn" href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(new URL(`/post/${post.slug}`, Astro.site ?? Astro.url.origin).toString())}&text=${encodeURIComponent(post.title)}`} target="_blank" rel="noopener noreferrer">分享</a>
+      </div>
+    </footer>
+  </article>
+
+  {post.relatedPosts && post.relatedPosts.length > 0 && (
+    <section class="mx-auto mt-14 max-w-3xl">
+      <div class="rule-label">相关阅读</div>
+      <div class="mt-2">{post.relatedPosts.map((item) => <ArticleCard post={item} />)}</div>
+    </section>
+  )}
+
+  <div class="mx-auto mt-14 max-w-3xl">
+    <CommentSection client:visible slug={post.slug} initialComments={comments} initialTotal={total} />
+  </div>
+
+  <script is:inline>
+    document.addEventListener('click', function (event) {
+      var target = event.target;
+      if (!(target instanceof HTMLElement) || target.dataset.share !== 'copy') return;
+      navigator.clipboard.writeText(window.location.href).then(function () {
+        target.textContent = '已复制';
+        setTimeout(function () { target.textContent = '复制链接'; }, 1500);
+      });
+    });
+  </script>
+</BaseLayout>
+
+<!-- avoid-ai-design-ignore-file: K7 — 键盘焦点样式为全局 :focus-visible（globals.css） -->

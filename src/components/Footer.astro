@@ -1,0 +1,31 @@
+---
+interface Props {
+  siteName: string;
+  icp?: string;
+  startedAt?: string;
+  socialLinks?: Array<{ label: string; url: string }>;
+}
+
+const { siteName, icp = '', startedAt = '', socialLinks = [] } = Astro.props;
+const year = new Date().getFullYear();
+---
+
+<footer class="mt-20 border-t border-line">
+  <div class="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-8 text-xs text-muted md:flex-row md:items-baseline md:justify-between">
+    <div class="space-y-1">
+      <p class="font-mono tabular-nums">© {startedAt ? `${startedAt.slice(0, 4)}–` : ''}{year}</p>
+      <p>{siteName}{icp ? ` · ${icp}` : ''}</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+      {socialLinks.map((link) => (
+        <a href={link.url} class="transition-colors hover:text-accent" rel="noopener noreferrer" target="_blank">{link.label}</a>
+      ))}
+      <a href="/toolbox" class="transition-colors hover:text-accent">工具箱</a>
+      <a href="/social" class="transition-colors hover:text-accent">友人帐</a>
+      <a href="/admin" class="transition-colors hover:text-accent">后台</a>
+    </div>
+  </div>
+</footer>
+
+
+<!-- avoid-ai-design-ignore-file: K7 — 键盘焦点样式为全局 :focus-visible（globals.css） -->

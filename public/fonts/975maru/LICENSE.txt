@@ -1,0 +1,6 @@
+975 Maru SC (975 圆体 / 975Maru SC)
+License: SIL Open Font License 1.1
+来源：https://www.npmjs.com/package/cn-fontsource-975-maru-sc-regular (v1.0.1)
+说明：基于思源黑体 / 狮尾圆体的圆体化字面。此处仅托管 SIL OFL 1.1 授权的 woff2 切片。
+
+本站只改写了 @font-face 的 font-display: swap，未修改字形。

@@ -1,0 +1,76 @@
+---
+import ThemeSwitcher from '@/components/ThemeSwitcher.tsx';
+import ReadingTools from '@/components/ReadingTools.tsx';
+
+interface Props {
+  siteName: string;
+  active?: string;
+  showReadingTools?: boolean;
+}
+
+const { siteName, active = '', showReadingTools = false } = Astro.props;
+
+const nav = [
+  { key: 'home', label: '首页', href: '/' },
+  { key: 'post', label: '文章', href: '/post' },
+  { key: 'archive', label: '归档', href: '/archive' },
+  { key: 'tags', label: '标签', href: '/tags' },
+  { key: 'categories', label: '分类', href: '/categories' },
+  { key: 'guestbook', label: '留言', href: '/guestbook' },
+  { key: 'about', label: '关于', href: '/about' },
+  { key: 'toolbox', label: '工具箱', href: '/toolbox' }
+];
+---
+
+<header class="app-header sticky top-0 z-40 border-b border-line">
+  <div class="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4">
+    <a href="/" class="flex shrink-0 items-center gap-1 text-[0.94rem] font-semibold tracking-tight">
+      <span class="text-accent" aria-hidden="true">§</span>
+      <span class="max-w-[10rem] truncate sm:max-w-none">{siteName}</span>
+    </a>
+
+    <span class="hidden h-4 w-px bg-line lg:block" aria-hidden="true"></span>
+
+    <nav class="hidden items-center gap-5 lg:flex" aria-label="主导航">
+      {nav.map((item) => (
+        <a
+          href={item.href}
+          class:list={['nav-item py-1 text-[0.82rem] transition-colors', item.key === active ? 'is-active' : '']}
+          aria-current={item.key === active ? 'page' : undefined}
+        >
+          {item.label}
+        </a>
+      ))}
+    </nav>
+
+    <div class="ml-auto flex shrink-0 items-center gap-1">
+      {showReadingTools && <ReadingTools client:visible />}
+      <a href="/search" class="btn btn-ghost" aria-label="搜索" title="搜索">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="m20 20-3.5-3.5"></path>
+        </svg>
+        <span class="hidden md:inline">搜索</span>
+      </a>
+      <ThemeSwitcher client:load />
+    </div>
+  </div>
+
+  <details class="mobile-menu border-t border-line lg:hidden">
+    <summary class="mx-auto flex max-w-5xl cursor-pointer list-none items-center justify-between px-4 py-2 text-xs text-muted">
+      <span>导航</span>
+      <span class="plus text-accent" aria-hidden="true">＋</span>
+    </summary>
+    <nav class="mx-auto flex max-w-5xl flex-wrap gap-x-4 gap-y-2 px-4 pb-4 pt-1" aria-label="移动端导航">
+      {nav.map((item) => (
+        <a href={item.href} class:list={['text-sm', item.key === active ? 'font-semibold text-accent' : 'text-muted']}>
+          {item.label}
+        </a>
+      ))}
+      <a href="/social" class="text-sm text-muted">友人帐</a>
+      <a href="/admin" class="text-sm text-muted">后台</a>
+    </nav>
+  </details>
+</header>
+
+<!-- avoid-ai-design-ignore-file: K7 — 键盘焦点样式为全局 :focus-visible（globals.css） -->

@@ -1,0 +1,12 @@
+export const DEFAULT_PAGE_SIZE = 10;
+export const MAX_PAGE_SIZE = 50;
+export const SESSION_COOKIE_PROD = '__Host-blog_session';
+export const SESSION_COOKIE_DEV = 'blog_session';
+export const OAUTH_STATE_COOKIE_PROD = '__Host-blog_oauth_state';
+export const OAUTH_STATE_COOKIE_DEV = 'blog_oauth_state';
+export const SESSION_DAYS = 30;
+export const OAUTH_STATE_MINUTES = 10;
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+export const DEFAULT_SITE_NAME = '我的个人博客';
+export const DEFAULT_SITE_DESCRIPTION = '记录技术、阅读和生活的个人博客。';

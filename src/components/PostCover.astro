@@ -1,0 +1,26 @@
+---
+import { defaultCoverSvg } from '@/lib/default-cover';
+
+interface Props {
+  src?: string | null;
+  title?: string | null;
+  alt?: string;
+  class?: string;
+  loading?: 'lazy' | 'eager';
+}
+
+const { src, title, alt = '', class: className = '', loading = 'lazy' } = Astro.props;
+const hasCover = typeof src === 'string' && src.trim().length > 0;
+---
+
+{
+  hasCover ? (
+    <img src={src} alt={alt} class={className} loading={loading} decoding="async" />
+  ) : (
+    <span
+      class:list={['block overflow-hidden bg-paper-soft', className]}
+      aria-hidden="true"
+      set:html={defaultCoverSvg(title)}
+    />
+  )
+}
