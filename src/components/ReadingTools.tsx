@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Languages, Maximize2, Minimize2, Printer } from '@/components/Icons';
 
-const SKIP_TAGS = new Set(['CODE', 'PRE', 'SCRIPT', 'STYLE', 'INPUT', 'TEXTAREA']);
+const SKIP_TAGS = new Set(['CODE', 'PRE', 'SCRIPT', 'STYLE', 'INPUT', 'TEXTAREA', 'SVG']);
 
 export default function ReadingTools() {
   const [fullscreen, setFullscreen] = useState(false);
@@ -35,7 +35,7 @@ export default function ReadingTools() {
     if (node.nodeType !== Node.ELEMENT_NODE) {
       return;
     }
-    if (SKIP_TAGS.has((node as Element).tagName)) {
+    if (SKIP_TAGS.has((node as Element).tagName.toUpperCase())) {
       return;
     }
     node.childNodes.forEach((child) => walk(child, visit));

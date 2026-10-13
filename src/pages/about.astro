@@ -5,6 +5,7 @@ import { getSiteProfile } from '@/server/db/settings';
 import { getSiteSummary } from '@/server/db/content';
 import { renderMarkdown } from '@/lib/markdown';
 import { formatNumber } from '@/lib/format';
+import MermaidEnhancer from '@/components/MermaidEnhancer.astro';
 
 const db = env.DB;
 const [profile, summary] = await Promise.all([getSiteProfile(db), getSiteSummary(db)]);
@@ -57,6 +58,8 @@ const about = profile.about ? renderMarkdown(profile.about) : '';
     </dl>
     {profile.startedAt && <p class="mt-4 text-xs text-muted">站点自 {profile.startedAt} 开始记录。</p>}
   </section>
+
+  <MermaidEnhancer />
 </BaseLayout>
 
 <!-- avoid-ai-design-ignore-file: K7 — 键盘焦点样式为全局 :focus-visible（globals.css） -->

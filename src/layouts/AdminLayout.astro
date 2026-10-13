@@ -1,4 +1,5 @@
 ---
+import '@fontsource-variable/outfit';
 import '@/styles/globals.css';
 
 interface Props {
@@ -16,28 +17,22 @@ const { title } = Astro.props;
     <title>{title} · 博客后台</title>
     <meta name="robots" content="noindex,nofollow" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="/fonts/975maru/font.css" />
+    <meta name="theme-color" content="#142126" />
     <script is:inline>
       (function () {
-        var LIGHT = ['xuanzhi', 'taichen', 'dianqing'];
-        var DARK = ['moye', 'songyan', 'xingye'];
-        var ALL = LIGHT.concat(DARK);
+        var legacy = { light: 'dianqing', dark: 'moye', xuanzhi: 'moye', songyan: 'moye', taichen: 'dianqing', xingye: 'dianqing' };
         var id = null;
         try {
           var stored = localStorage.getItem('blog-theme');
-          if (stored === 'light') id = LIGHT[0];
-          else if (stored === 'dark') id = DARK[0];
-          else if (stored && ALL.indexOf(stored) !== -1) id = stored;
-        } catch (e) {
-          /* 忽略存储异常 */
-        }
-        if (!id) id = window.matchMedia('(prefers-color-scheme: dark)').matches ? DARK[0] : LIGHT[0];
+          id = legacy[stored] || (stored === 'moye' || stored === 'dianqing' ? stored : null);
+          if (id && stored !== id) localStorage.setItem('blog-theme', id);
+        } catch (e) { /* 存储不可用时跟随系统 */ }
+        if (!id) id = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'moye' : 'dianqing';
         var root = document.documentElement;
         root.setAttribute('data-theme', id);
-        if (DARK.indexOf(id) !== -1) root.classList.add('dark');
-        var surfaceMap = { xuanzhi: '#f5f2ec', taichen: '#f2f4ec', dianqing: '#f1f3f7', moye: '#131418', songyan: '#101413', xingye: '#10131b' };
+        root.classList.toggle('dark', id === 'moye');
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', surfaceMap[id] || surfaceMap.xuanzhi);
+        if (meta) meta.setAttribute('content', id === 'moye' ? '#142126' : '#f0ecdf');
       })();
     </script>
   </head>

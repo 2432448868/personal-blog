@@ -16,11 +16,17 @@ export default function SearchApp() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError('');
     fetch('/api/search-index', { headers: { Accept: 'application/json' } })
-      .then((response) => response.json() as Promise<{ data: { items: SearchItem[] } }>)
+      .then((response) => {
+        if (!response.ok) throw new Error('索引请求失败');
+        return response.json() as Promise<{ data: { items: SearchItem[] } }>;
+      })
       .then((payload) => {
         if (active) {
           setItems(payload.data?.items ?? []);
@@ -28,7 +34,7 @@ export default function SearchApp() {
       })
       .catch(() => {
         if (active) {
-          setError('搜索索引加载失败，请刷新重试');
+          setError('暂时没能加载文章索引，请再试一次。');
         }
       })
       .finally(() => {
@@ -39,7 +45,7 @@ export default function SearchApp() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [attempt]);
 
   const results = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -55,26 +61,31 @@ export default function SearchApp() {
 
   return (
     <div className="space-y-6">
-      <div className="border border-line bg-paper p-4">
+      <div className="search-box">
+        <label htmlFor="garden-search" className="block mb-3 text-sm font-medium">想找些什么？</label>
+        <div className="flex items-center gap-3">
         <input
+          id="garden-search"
           className="field"
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="输入标题、标签或摘要关键词…"
           autoComplete="off"
-          autoFocus
         />
-        <p className="mt-2 text-xs text-muted">
-          {loading ? '正在加载索引…' : `共 ${items.length} 篇文章索引，命中 ${results.length} 条`}
+        {query && <button type="button" className="btn" onClick={() => setQuery('')}>清空</button>}
+        </div>
+        <p className="search-status mt-3 text-xs text-muted" role="status" aria-live="polite">
+          {loading ? '正在整理文章索引…' : error ? '索引尚未就绪' : query ? `找到 ${results.length} 篇相关文章` : `共 ${items.length} 篇文章 · 展示最近 ${results.length} 篇`}
           {query ? '（按空格分隔可多关键词匹配）' : '（默认展示最新文章）'}
         </p>
       </div>
 
-      {error && <p className="text-sm text-accent">{error}</p>}
+      {error && <div role="alert" className="empty-state"><p>{error}</p><button type="button" className="btn" onClick={() => setAttempt((value) => value + 1)}>重新加载</button></div>}
+      {loading && <div aria-hidden="true" className="search-skeleton">{[0, 1, 2].map((row) => <div key={row}><span /><span /></div>)}</div>}
 
-      {results.length === 0 && !loading ? (
-        <p className="py-10 text-center text-sm text-muted">没有匹配的文章，换个关键词试试。</p>
+      {!loading && !error && (results.length === 0 ? (
+        <div className="empty-state"><h2>还没找到这片叶子。</h2><p>试试更短的关键词，或去分类索引里逛逛。</p><a href="/categories" className="text-link">浏览分类</a></div>
       ) : (
         <ul className="space-y-3">
           {results.map((item) => (
@@ -89,7 +100,7 @@ export default function SearchApp() {
             </li>
           ))}
         </ul>
-      )}
+      ))}
     </div>
   );
 }

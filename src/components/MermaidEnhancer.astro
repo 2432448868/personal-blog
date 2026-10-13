@@ -1,0 +1,22 @@
+---
+/**
+ * 把正文里的 ```mermaid 代码块渲染成 SVG。
+ * mermaid 走动态 import，只有页面上真的出现 mermaid 代码块时才会下载。
+ */
+---
+
+<script>
+  import { enhanceMermaid, observeThemeChanges } from '@/lib/mermaid-client';
+
+  function run() {
+    void enhanceMermaid(document).catch(() => {});
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run, { once: true });
+  } else {
+    run();
+  }
+
+  observeThemeChanges();
+</script>

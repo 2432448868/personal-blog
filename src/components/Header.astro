@@ -23,10 +23,10 @@ const nav = [
 ---
 
 <header class="app-header sticky top-0 z-40 border-b border-line">
-  <div class="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4">
+  <div class="site-shell flex h-16 items-center gap-4">
     <a href="/" class="flex shrink-0 items-center gap-1 text-[0.94rem] font-semibold tracking-tight">
-      <span class="text-accent" aria-hidden="true">§</span>
-      <span class="max-w-[10rem] truncate sm:max-w-none">{siteName}</span>
+      <span class="brand-mark"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M7 5v22M25 5 13 16l12 11" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 16h8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span>
+      <span class="max-w-[11rem] truncate sm:max-w-none">{siteName}</span>
     </a>
 
     <span class="hidden h-4 w-px bg-line lg:block" aria-hidden="true"></span>
@@ -57,13 +57,13 @@ const nav = [
   </div>
 
   <details class="mobile-menu border-t border-line lg:hidden">
-    <summary class="mx-auto flex max-w-5xl cursor-pointer list-none items-center justify-between px-4 py-2 text-xs text-muted">
-      <span>导航</span>
+    <summary class="site-shell flex cursor-pointer list-none items-center justify-between py-2 text-xs text-muted">
+      <span>目录 <span class="mobile-current">{nav.find((item) => item.key === active)?.label ?? '浏览'}</span></span>
       <span class="plus text-accent" aria-hidden="true">＋</span>
     </summary>
-    <nav class="mx-auto flex max-w-5xl flex-wrap gap-x-4 gap-y-2 px-4 pb-4 pt-1" aria-label="移动端导航">
+    <nav class="mobile-nav site-shell pb-4 pt-1" aria-label="移动端导航">
       {nav.map((item) => (
-        <a href={item.href} class:list={['text-sm', item.key === active ? 'font-semibold text-accent' : 'text-muted']}>
+        <a href={item.href} aria-current={item.key === active ? 'page' : undefined} class:list={['text-sm', item.key === active ? 'font-semibold text-accent' : 'text-muted']}>
           {item.label}
         </a>
       ))}

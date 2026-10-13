@@ -2,128 +2,89 @@
 import { env } from 'cloudflare:workers';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import ArticleCard from '@/components/ArticleCard.astro';
-import { getSiteSummary, listArchive, listPosts, listTags } from '@/server/db/content';
-import { listRecentComments } from '@/server/db/interactions';
+import { getSiteSummary, listPosts, listTags } from '@/server/db/content';
 import { getSiteProfile } from '@/server/db/settings';
-import { formatMonth, formatNumber } from '@/lib/format';
+import GardenMotion from '@/components/GardenMotion.tsx';
+import { formatNumber } from '@/lib/format';
 
 const db = env.DB;
-const [profile, latest, tags, archive, summary, recentComments] = await Promise.all([
+const [profile, latest, tags, summary] = await Promise.all([
   getSiteProfile(db),
   listPosts(db, { page: 1, pageSize: 6 }),
   listTags(db),
-  listArchive(db),
-  getSiteSummary(db),
-  listRecentComments(db, 4)
+  getSiteSummary(db)
 ]);
 
 const lede = [
-  { label: '篇', value: summary.postCount },
-  { label: '条评论', value: summary.commentCount },
-  { label: '条留言', value: summary.guestbookCount },
-  { label: '字', value: summary.totalWords }
+  { label: '篇文章', value: summary.postCount },
+  { label: '字记录', value: summary.totalWords }
 ];
+const hasKaleName = profile.name.startsWith('Kale');
+const motto = profile.motto || '写下所学，留下所想。';
 ---
 
 <BaseLayout title={profile.name} description={profile.bio} active="home">
-  <section class="grid gap-8 border-b border-line pb-8 md:grid-cols-[1fr_15rem] md:items-end">
-    <div>
-      <h1 class="text-[2rem] font-semibold leading-[1.25] tracking-tight md:text-[2.6rem]">{profile.name}</h1>
-      <p class="mt-3 max-w-xl text-sm leading-relaxed text-muted">{profile.bio}</p>
-      {profile.motto && <p class="mt-3 text-sm text-accent">「{profile.motto}」</p>}
-    </div>
-
-    <div class="flex items-end gap-5 md:justify-end">
-      {profile.avatar && <img src={profile.avatar} alt="" width={72} height={72} class="h-16 w-16 rounded-full border border-line object-cover" loading="lazy" />}
-      <dl class="flex flex-wrap gap-x-5 gap-y-1 text-xs md:flex-col md:gap-y-2 md:text-right">
-        {lede.map((item) => (
-          <div class="flex items-baseline gap-1.5 md:justify-end">
-            <dd class="font-mono text-base font-semibold tabular-nums">{formatNumber(item.value)}</dd>
-            <dt class="text-muted">{item.label}</dt>
-          </div>
-        ))}
-      </dl>
-    </div>
-  </section>
-
-  {profile.announcement && (
-    <aside class="mt-6 border-l-2 border-accent pl-3 text-sm leading-relaxed text-muted">
-      <span class="font-medium text-accent">公告 </span>{profile.announcement}
-    </aside>
-  )}
-
-  <div class="mt-10 grid gap-x-12 gap-y-12 lg:grid-cols-[minmax(0,1fr)_16rem]">
-    <div>
-      <div class="rule-label">最新文章</div>
-      {latest.items.length === 0 ? (
-        <p class="py-12 text-sm text-muted">还没有发布的文章。</p>
-      ) : (
-        <div>{latest.items.map((post, index) => <ArticleCard post={post} order={index + 1} />)}</div>
-      )}
-      <a href="/post" class="mt-6 inline-flex items-center gap-1.5 border-b border-line-strong pb-0.5 text-sm text-muted transition-colors hover:border-accent hover:text-accent">
-        全部文章
-        <span class="font-mono text-xs">{formatNumber(summary.postCount)}</span>
-      </a>
-    </div>
-
-    <aside class="space-y-9">
-      <section>
-        <div class="rule-label">站点统计</div>
-        <dl class="mt-3 text-sm">
-          {[
-            { label: '文章', value: summary.postCount },
-            { label: '累计字数', value: summary.totalWords },
-            { label: '累计阅读', value: summary.totalViews },
-            { label: '评论 + 留言', value: summary.commentCount + summary.guestbookCount }
-          ].map((item) => (
-            <div class="rule-row">
-              <dt class="text-muted">{item.label}</dt>
-              <dd class="font-mono tabular-nums">{formatNumber(item.value)}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-
-      <section>
-        <div class="rule-label">标签云</div>
-        <div class="mt-3 flex flex-wrap gap-1.5">
-          {tags.length === 0 && <p class="text-xs text-muted">暂无标签</p>}
-          {tags.map((tag) => (
-            <a href={`/post?tag=${tag.slug}`} class="chip">{tag.name}<span class="ml-1 font-mono text-[0.68rem] text-muted">{tag.postCount ?? 0}</span></a>
-          ))}
+  <div class="living-garden" data-garden>
+    <section class="folio-hero" aria-labelledby="garden-title">
+      <div class="folio-copy">
+        <p class="folio-greeting">你好，我是 Kale。这里存放我的好奇心。</p>
+        <h1 id="garden-title">{hasKaleName ? <><span class="folio-name">Kale<span class="folio-period">.</span></span><span class="folio-subtitle">的数字花园<span class="folio-avatar">{profile.avatar && <img src={profile.avatar} alt="Kale 的 GitHub 头像" width={72} height={72} />}</span></span></> : profile.name}</h1>
+        <p class="folio-bio">{profile.bio}</p>
+        <div class="folio-actions">
+          <a href="#latest" class="btn btn-primary" data-magnetic><span>走进花园</span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg></a>
+          <a href="/about" class="folio-about">认识园主 <span aria-hidden="true">↗</span></a>
         </div>
-      </section>
+      </div>
+      <figure class="growth-art" aria-label="由代码与文字长成的抽象植物">
+        <svg class="growth-svg" viewBox="0 0 480 480" fill="none" role="img" aria-labelledby="growth-title">
+          <title id="growth-title">一株正在生长的数字植物</title>
+          <defs><pattern id="garden-grid" width="32" height="32" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="currentColor" opacity=".17" /></pattern></defs>
+          <rect width="480" height="480" fill="url(#garden-grid)" />
+          <circle class="growth-orbit" cx="240" cy="240" r="192" stroke="currentColor" stroke-opacity=".18" stroke-dasharray="3 8" />
+          <path d="M240 418V182" stroke="currentColor" stroke-width="2" />
+          <g class="growth-leaf growth-leaf-left"><path d="M240 344C124 346 63 280 76 177c112-3 180 63 164 167Z" fill="var(--accent)" /><path d="M240 344 107 208M150 249l-3-43M185 284l-47-2" stroke="var(--accent-ink)" stroke-width="2" /></g>
+          <g class="growth-leaf growth-leaf-right"><path d="M240 287c-13-101 54-168 164-167 14 105-51 171-164 167Z" fill="var(--ink)" /><path d="m240 287 133-137m-91 92 49 1m-16-35 1-42" stroke="var(--surface)" stroke-width="2" /></g>
+          <g class="growth-leaf growth-leaf-top"><path d="M240 204c-72-41-83-105-31-164 73 41 87 105 31 164Z" fill="var(--accent)" /><path d="m240 204-26-128" stroke="var(--accent-ink)" stroke-width="2" /></g>
+          <path d="M176 419h128" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          <circle cx="394" cy="365" r="12" stroke="currentColor" stroke-opacity=".55" />
+          <path d="M87 104h16m-8-8v16" stroke="currentColor" stroke-opacity=".55" />
+        </svg>
+        <figcaption><span>持续生长，不必完美。</span><span class="growth-status"><i aria-hidden="true"></i>写作中</span></figcaption>
+      </figure>
+    </section>
 
-      <section>
-        <div class="rule-label">归档</div>
-        <ul class="mt-3 text-sm">
-          {archive.length === 0 && <li class="text-xs text-muted">暂无归档</li>}
-          {archive.slice(0, 8).map((item) => (
-            <li class="rule-row">
-              <a href={`/post?year=${item.month.slice(0, 4)}&month=${item.month.slice(5, 7)}`} class="text-muted transition-colors hover:text-accent">{formatMonth(item.month)}</a>
-              <span class="font-mono text-xs text-muted tabular-nums">{item.count}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+    <div class="folio-colophon">
+      <dl>{lede.map((item) => <div><dd>{formatNumber(item.value)}</dd><dt>{item.label}</dt></div>)}</dl>
+      {profile.announcement && <p><span>近况</span>{profile.announcement}</p>}
+    </div>
 
-      <section>
-        <div class="rule-label">最新评论</div>
-        <ul class="mt-3 space-y-3 text-sm">
-          {recentComments.length === 0 && <li class="text-xs text-muted">暂无评论</li>}
-          {recentComments.map((comment) => (
-            <li class="border-b border-line pb-3 last:border-0">
-              <p class="line-clamp-2 text-muted">{comment.content}</p>
-              <p class="mt-1 text-xs text-muted">
-                <span class="text-ink">{comment.user_name}</span> 评
-                <a href={`/post/${comment.post_slug ?? ''}`} class="ml-1 transition-colors hover:text-accent">{comment.post_title}</a>
-              </p>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </aside>
+    <section class="notes-section" id="latest" aria-labelledby="notes-title">
+      <div class="notes-index" data-pin-index>
+        <p class="notes-intro">最近，正在记录</p>
+        <h2 id="notes-title">新的<br /><em>枝叶。</em></h2>
+        <p class="notes-description">技术里的细节，生活里的片刻。<br />慢慢积累，偶尔回看。</p>
+        <a href="/archive" class="folio-about">按时间翻阅 <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="notes-feed">
+        {latest.items.length === 0 ? <div class="empty-state"><h3>第一篇，还在酝酿中。</h3><a href="/guestbook" class="text-link">去留言</a></div> : latest.items.map((post, index) => <ArticleCard post={post} featured={index === 0} />)}
+        <a href="/post" class="notes-all" data-magnetic><span>翻阅全部文章</span><span class="font-mono">{formatNumber(summary.postCount)} <span aria-hidden="true">↗</span></span></a>
+      </div>
+    </section>
+
+    <section class="garden-paths" aria-labelledby="paths-title">
+      <div class="paths-heading"><h2 id="paths-title">随处逛逛。</h2><p>不只有文章，还有一些顺手留下的小东西。</p></div>
+      <div class="paths-grid">
+        <a class="path-card" href="/tags"><span class="path-icon" aria-hidden="true">#</span><h3>循着兴趣</h3><p>从一个关键词出发。</p><div class="path-tags">{tags.slice(0, 4).map(tag => <span>{tag.name}</span>)}</div><span class="path-go" aria-hidden="true">↗</span></a>
+        <a class="path-card" href="/toolbox"><span class="path-icon" aria-hidden="true">⌘</span><h3>顺手工具</h3><p>让重复的事情，变得简单一点。</p><span class="path-detail">打开工具箱</span><span class="path-go" aria-hidden="true">↗</span></a>
+        <a class="path-card" href="/categories"><span class="path-icon" aria-hidden="true">∗</span><h3>分门别类</h3><p>给散落的笔记，找一个位置。</p><span class="path-detail">浏览文章分类</span><span class="path-go" aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+
+    <section class="garden-invitation" aria-labelledby="invitation-title">
+      <p>花园不是独白。</p>
+      <h2 id="invitation-title" data-word-reveal>{Array.from(motto).map(char => <span>{char}</span>)}</h2>
+      <div class="invitation-action"><span>如果你也有想法，欢迎留下一句。</span><a href="/guestbook" class="invitation-link" data-magnetic>聊两句 <span aria-hidden="true">↗</span></a></div>
+    </section>
+    <GardenMotion client:load />
   </div>
 </BaseLayout>
-
-<!-- avoid-ai-design-ignore-file: K7 — 焦点样式为全局 :focus-visible（globals.css） -->

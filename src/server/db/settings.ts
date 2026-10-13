@@ -4,9 +4,9 @@ import { safeJsonParse } from '@/lib/format';
 import { queryAll, queryOne } from './client';
 
 const DEFAULT_PROFILE: SiteProfile = {
-  name: '我的个人博客',
+  name: 'Kale的数字花园',
   bio: '记录技术、阅读和生活的个人博客。',
-  avatar: '/avatar.svg',
+  avatar: 'https://github.com/2432448868.png?size=280',
   motto: '把日子码成可检索的形状。',
   announcement: '',
   about: '',
@@ -25,9 +25,12 @@ export async function getSiteProfile(db: D1Database): Promise<SiteProfile> {
   const socialLinks = safeJsonParse<SiteProfile['socialLinks']>(settings['site.social_links'] ?? '[]', []);
   return {
     ...DEFAULT_PROFILE,
-    name: settings['profile.name'] ?? DEFAULT_PROFILE.name,
+    // 兼容旧种子站名，不写数据库；后台设置的其它自定义站名仍保留。
+    name: !settings['profile.name'] || ['牢大的数字花园', '我的个人博客'].includes(settings['profile.name'])
+      ? DEFAULT_PROFILE.name : settings['profile.name'],
     bio: settings['profile.bio'] ?? DEFAULT_PROFILE.bio,
-    avatar: settings['profile.avatar'] ?? DEFAULT_PROFILE.avatar,
+    avatar: !settings['profile.avatar'] || settings['profile.avatar'] === '/avatar.svg'
+      ? DEFAULT_PROFILE.avatar : settings['profile.avatar'],
     motto: settings['profile.motto'] ?? DEFAULT_PROFILE.motto,
     announcement: settings['site.announcement'] ?? '',
     about: settings['site.about'] ?? '',

@@ -6,27 +6,29 @@ import PostCover from '@/components/PostCover.astro';
 interface Props {
   post: PostSummary;
   order?: number;
+  featured?: boolean;
 }
 
-const { post, order } = Astro.props;
+const { post, order, featured = false } = Astro.props;
 const date = formatDate(post.publishedAt ?? post.createdAt);
 const index = typeof order === 'number' ? String(order).padStart(2, '0') : null;
 const href = `/post/${post.slug}`;
 ---
 
-<article class="article-row group grid gap-2 border-b border-line py-6 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:gap-4">
-  <div class="index-rail flex items-center gap-2 sm:block sm:space-y-1">
-    {index && <span class="text-accent">{index}</span>}
+<article class:list={["article-row group", { "article-featured": featured }]}>
+  <div class="index-rail">
+    {index && <span class="article-number">{index}</span>}
+    {featured && <span class="article-fresh">最近更新</span>}
     <time datetime={post.publishedAt ?? post.createdAt} class="tabular-nums">{date}</time>
     <p class="text-muted">{readingTime(post.wordCount)}</p>
   </div>
 
   <div class="flex items-start gap-4 sm:gap-5">
     <div class="min-w-0 flex-1">
-      <h2 class="text-lg font-semibold leading-snug">
+      <h2 class="article-title">
         <a href={href} class="transition-colors">{post.title}</a>
       </h2>
-      <p class="mt-1.5 line-clamp-2 text-sm leading-relaxed text-muted">{post.summary || '（暂无摘要）'}</p>
+      {post.summary && <p class="article-summary line-clamp-2">{post.summary}</p>}
       <div class="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted">
         {post.categories.map((category) => (
           <a href={`/post?category=${category.slug}`} class="transition-colors hover:text-accent">{category.name}</a>
@@ -38,14 +40,14 @@ const href = `/post/${post.slug}`;
       </div>
     </div>
 
-    <a
+    {post.coverImage && <a
       href={href}
       tabindex="-1"
       aria-hidden="true"
-      class="block aspect-[16/10] w-20 shrink-0 overflow-hidden rounded-[3px] border border-line bg-paper-soft transition-colors group-hover:border-line-strong sm:w-28 md:w-32"
+      class="article-cover"
     >
       <PostCover src={post.coverImage} title={post.title} class="h-full w-full object-cover" />
-    </a>
+    </a>}
   </div>
 </article>
 

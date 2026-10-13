@@ -1,6 +1,7 @@
 ---
 import { env } from 'cloudflare:workers';
 import BaseLayout from '@/layouts/BaseLayout.astro';
+import PageHeading from '@/components/PageHeading.astro';
 import ArticleCard from '@/components/ArticleCard.astro';
 import { listCategories, listPosts, listTags } from '@/server/db/content';
 
@@ -32,7 +33,7 @@ function pageHref(target: number): string {
 ---
 
 <BaseLayout title="文章" description="全部文章列表" active="post">
-  <div class="rule-label">文章索引</div>
+  <PageHeading title="文章索引" description="从技术到生活，把写过的东西慢慢翻一遍。" meta={`${result.total} 篇文章`} />
 
   {filters.length > 0 && (
     <div class="mt-4 flex flex-wrap items-center gap-2">

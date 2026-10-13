@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Check } from '@/components/Icons';
 
@@ -8,27 +8,23 @@ export interface ThemeDef {
   id: string;
   name: string;
   mode: ThemeMode;
+  tone: 'cool' | 'warm';
 }
 
-const DEFAULT_LIGHT: ThemeDef = { id: 'xuanzhi', name: '宣纸', mode: 'light' };
-const DEFAULT_DARK: ThemeDef = { id: 'moye', name: '墨夜', mode: 'dark' };
+const DEFAULT_LIGHT: ThemeDef = { id: 'dianqing', name: '日光', mode: 'light', tone: 'warm' };
+const DEFAULT_DARK: ThemeDef = { id: 'moye', name: '夜航', mode: 'dark', tone: 'cool' };
 
-/** 与 globals.css 里的 [data-theme="..."] 令牌一一对应，改这里记得同步改 CSS。 */
-export const THEMES: ThemeDef[] = [
-  DEFAULT_LIGHT,
-  { id: 'taichen', name: '苔痕', mode: 'light' },
-  { id: 'dianqing', name: '靛青', mode: 'light' },
-  DEFAULT_DARK,
-  { id: 'songyan', name: '松烟', mode: 'dark' },
-  { id: 'xingye', name: '星野', mode: 'dark' }
-];
+export const THEMES: ThemeDef[] = [DEFAULT_DARK, DEFAULT_LIGHT];
+const LEGACY_THEMES: Record<string, string> = {
+  light: 'dianqing', dark: 'moye', xuanzhi: 'moye', songyan: 'moye', taichen: 'dianqing', xingye: 'dianqing'
+};
 
-const MODES: ThemeMode[] = ['light', 'dark'];
-const THEME_LABEL: Record<ThemeMode, string> = { light: '日间', dark: '夜间' };
 const STORAGE_KEY = 'blog-theme';
 
 interface ViewTransitionLike {
   finished: Promise<void>;
+  ready: Promise<void>;
+  skipTransition: () => void;
 }
 
 type ViewTransitionDocument = Document & {
@@ -49,8 +45,7 @@ function documentThemeId(): string {
 function storedThemeId(): string | null {
   try {
     const value = localStorage.getItem(STORAGE_KEY);
-    if (value === 'light') return DEFAULT_LIGHT.id;
-    if (value === 'dark') return DEFAULT_DARK.id;
+    if (value && LEGACY_THEMES[value]) return LEGACY_THEMES[value];
     if (value && THEMES.some((theme) => theme.id === value)) return value;
   } catch {
     /* 隐私模式下忽略 */
@@ -83,9 +78,14 @@ export default function ThemeSwitcher() {
   const [current, setCurrent] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const transitionRef = useRef<ViewTransitionLike | null>(null);
+  const panelId = useId();
+  const [system, setSystem] = useState(false);
 
   useEffect(() => {
     setCurrent(documentThemeId());
+    setSystem(!storedThemeId());
     syncMetaColor();
 
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -102,13 +102,17 @@ export default function ThemeSwitcher() {
 
   useEffect(() => {
     if (!open) return;
+    rootRef.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"].theme-option')?.focus({ preventScroll: true });
 
     function onPointerDown(event: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
     }
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus({ preventScroll: true });
+      }
     }
 
     document.addEventListener('mousedown', onPointerDown);
@@ -119,9 +123,18 @@ export default function ThemeSwitcher() {
     };
   }, [open]);
 
-  function select(theme: ThemeDef) {
+  function select(theme: ThemeDef, followSystem = false) {
     setOpen(false);
-    if (theme.id === current) return;
+    triggerRef.current?.focus({ preventScroll: true });
+    setSystem(followSystem);
+    if (followSystem) {
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* 忽略存储异常 */ }
+    }
+    if (theme.id === current) {
+      applyTheme(theme, !followSystem);
+      return;
+    }
+    transitionRef.current?.skipTransition();
 
     const root = document.documentElement;
     const animated = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -129,15 +142,26 @@ export default function ThemeSwitcher() {
 
     const commit = (withTransition: boolean) => {
       if (withTransition) root.dataset.themeTransition = 'true';
-      applyTheme(theme);
+      applyTheme(theme, !followSystem);
       flushSync(() => setCurrent(theme.id));
     };
 
+    const bounds = triggerRef.current?.getBoundingClientRect();
+    if (bounds) {
+      root.style.setProperty('--theme-x', `${bounds.left + bounds.width / 2}px`);
+      root.style.setProperty('--theme-y', `${bounds.top + bounds.height / 2}px`);
+    }
     if (animated && startViewTransition) {
       const transition = startViewTransition.call(document, () => commit(true));
-      void transition.finished.finally(() => {
+      transitionRef.current = transition;
+      // 视口变化或快速切换可能取消揭示，但主题本身仍应正常应用。
+      void transition.ready.catch(() => undefined);
+      const cleanup = () => {
+        if (transitionRef.current !== transition) return;
         delete root.dataset.themeTransition;
-      });
+        transitionRef.current = null;
+      };
+      void transition.finished.then(cleanup, cleanup);
       return;
     }
 
@@ -147,15 +171,21 @@ export default function ThemeSwitcher() {
   const active = current ? themeById(current) : null;
 
   return (
-    <div className="theme-picker" ref={rootRef}>
+    <div className="theme-picker" ref={rootRef} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+    }}>
       <button
         type="button"
+        ref={triggerRef}
         className="btn btn-ghost theme-picker-trigger"
-        aria-haspopup="true"
+        aria-controls={open ? panelId : undefined}
         aria-expanded={open}
         aria-label={active ? `主题：${active.name}，点开切换` : '选择主题'}
         title="切换主题"
         onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); }
+        }}
       >
         <span className="theme-dots" aria-hidden="true">
           <i className="dot-surface" />
@@ -166,34 +196,30 @@ export default function ThemeSwitcher() {
       </button>
 
       {open && (
-        <div className="theme-panel" role="radiogroup" aria-label="选择主题">
-          {MODES.map((mode) => (
-            <div className="theme-group" key={mode}>
-              <p className="theme-group-label">{THEME_LABEL[mode]}</p>
-              {THEMES.filter((theme) => theme.mode === mode).map((theme) => (
-                <button
-                  key={theme.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={theme.id === current}
-                  className="theme-option"
-                  onClick={() => select(theme)}
-                >
-                  <span className="theme-dots" data-theme={theme.id} aria-hidden="true">
-                    <i className="dot-surface" />
-                    <i className="dot-ink" />
-                    <i className="dot-accent" />
-                  </span>
-                  <span>{theme.name}</span>
-                  {theme.id === current && (
-                    <span className="theme-option-check" aria-hidden="true">
-                      <Check size={14} />
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
+        <div className="theme-panel" id={panelId} role="group" aria-label="选择主题" onKeyDown={(event) => {
+          const keys = ['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'];
+          if (!keys.includes(event.key)) return;
+          const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button'));
+          const index = options.indexOf(document.activeElement as HTMLButtonElement);
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1
+            : (index + (event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 1) + options.length) % options.length;
+          event.preventDefault();
+          options[next]?.focus();
+        }}>
+          <p className="theme-group-label">花园的两种光线</p>
+          {THEMES.map((theme) => (
+            <button key={theme.id} type="button" aria-pressed={theme.id === current}
+              className="theme-option" onClick={() => select(theme)}>
+              <span className="theme-dots" data-theme={theme.id} aria-hidden="true">
+                <i className="dot-surface" /><i className="dot-ink" /><i className="dot-accent" />
+              </span>
+              <span>{theme.name}</span>
+              <span className="theme-option-check" aria-hidden="true">{theme.id === current && <Check size={14} />}</span>
+            </button>
           ))}
+          <button type="button" className="theme-system" aria-pressed={system} onClick={() => select(
+            window.matchMedia('(prefers-color-scheme: dark)').matches ? DEFAULT_DARK : DEFAULT_LIGHT, true
+          )}>跟随系统{system ? ' · 已开启' : ''}</button>
         </div>
       )}
     </div>

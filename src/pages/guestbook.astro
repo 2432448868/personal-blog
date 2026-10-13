@@ -1,6 +1,7 @@
 ---
 import { env } from 'cloudflare:workers';
 import BaseLayout from '@/layouts/BaseLayout.astro';
+import PageHeading from '@/components/PageHeading.astro';
 import GuestbookSection from '@/components/GuestbookSection.tsx';
 import { listGuestbook } from '@/server/db/interactions';
 import type { GuestbookItem } from '@/types/domain';
@@ -13,8 +14,8 @@ const total = items.reduce(function count(acc: number, item: GuestbookItem): num
 ---
 
 <BaseLayout title="留言板" description="留言与交流" active="guestbook">
-  <div class="rule-label">留言板</div>
-  <p class="mt-3 max-w-xl text-sm leading-relaxed text-muted">欢迎留下足迹。留言经博主审核后展示，支持嵌套回复。</p>
+  <PageHeading title="园中留言" description="路过也好，常来也好，留下一点你的声音。" />
+  <p class="mt-4 text-xs text-muted">留言经园主审核后展示，支持回复。</p>
   <div class="mt-8">
     <GuestbookSection client:visible initialItems={items} initialTotal={total} />
   </div>

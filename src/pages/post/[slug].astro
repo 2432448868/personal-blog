@@ -8,6 +8,7 @@ import { getPublishedPost } from '@/server/services/content';
 import { renderMarkdown } from '@/lib/markdown';
 import { formatDate, readingTime } from '@/lib/format';
 import PostCover from '@/components/PostCover.astro';
+import MermaidEnhancer from '@/components/MermaidEnhancer.astro';
 import type { CommentItem } from '@/types/domain';
 
 const db = env.DB;
@@ -87,6 +88,8 @@ const jsonLd = {
       <div class="mt-2">{post.relatedPosts.map((item) => <ArticleCard post={item} />)}</div>
     </section>
   )}
+
+  <MermaidEnhancer />
 
   <div class="mx-auto mt-14 max-w-3xl">
     <CommentSection client:visible slug={post.slug} initialComments={comments} initialTotal={total} />

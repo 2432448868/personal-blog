@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
 import type { PostDetail, SessionUser } from '@/types/domain';
 import { defaultCoverSvg } from '@/lib/default-cover';
+import { enhanceMermaid, observeThemeChanges } from '@/lib/mermaid-client';
 
 interface Props {
   postId: string | null;
@@ -27,8 +28,8 @@ export default function PostEditor({ postId }: Props) {
   const [preview, setPreview] = useState(false);
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [ready, setReady] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     (async () => {
@@ -71,32 +72,16 @@ export default function PostEditor({ postId }: Props) {
     }
   }, [content]);
 
-  function toggle(list: string[], id: string, setter: (value: string[]) => void) {
-    setter(list.includes(id) ? list.filter((item) => item !== id) : [...list, id]);
-  }
-
-  async function upload(file: File) {
-    if (!token) {
+  useEffect(() => {
+    if (!preview || !previewRef.current) {
       return;
     }
-    setUploading(true);
-    setMessage('');
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      const response = await fetch('/api/admin/uploads', { method: 'POST', headers: { 'X-CSRF-Token': token }, body: form });
-      const payload = (await response.json()) as { message: string; data: { url: string } | null };
-      if (!response.ok || !payload.data) {
-        setMessage(payload.message || '上传失败');
-        return;
-      }
-      setCoverImage(payload.data.url);
-      setMessage('封面上传成功');
-    } catch {
-      setMessage('上传失败，请稍后重试');
-    } finally {
-      setUploading(false);
-    }
+    void enhanceMermaid(previewRef.current);
+    observeThemeChanges();
+  }, [preview, rendered]);
+
+  function toggle(list: string[], id: string, setter: (value: string[]) => void) {
+    setter(list.includes(id) ? list.filter((item) => item !== id) : [...list, id]);
   }
 
   async function save(nextStatus: 'draft' | 'published') {
@@ -156,7 +141,7 @@ export default function PostEditor({ postId }: Props) {
         <div className="space-y-3">
           <input className="field text-lg" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="文章标题" maxLength={200} />
           {preview ? (
-            <div className="card prose-editorial min-h-[32rem] p-5" dangerouslySetInnerHTML={{ __html: rendered }} />
+            <div ref={previewRef} className="card prose-editorial min-h-[32rem] p-5" dangerouslySetInnerHTML={{ __html: rendered }} />
           ) : (
             <textarea className="field min-h-[32rem] resize-y font-mono text-sm" value={content} onChange={(event) => setContent(event.target.value)} placeholder="使用 Markdown 编写正文…" />
           )}
@@ -170,10 +155,8 @@ export default function PostEditor({ postId }: Props) {
             <label className="block text-xs text-muted">摘要</label>
             <textarea className="field min-h-20 resize-y" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="列表与 SEO 使用的摘要" maxLength={500} />
 
-            <label className="block text-xs text-muted">封面图 URL（留空则用默认封面）</label>
-            <input className="field" value={coverImage} onChange={(event) => setCoverImage(event.target.value)} placeholder="/api/media/..." />
-            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="text-xs" onChange={(event) => { const file = event.target.files?.[0]; if (file) { void upload(file); } }} />
-            {uploading && <p className="text-xs text-muted">上传中…</p>}
+            <label className="block text-xs text-muted">封面图（留空则用默认封面）</label>
+            <input className="field" value={coverImage} onChange={(event) => setCoverImage(event.target.value)} placeholder="https://… 图片外链，留空用默认封面" />
             <div className="overflow-hidden rounded-[3px] border border-line bg-paper-soft">
               {coverImage.trim() ? (
                 <img src={coverImage} alt="封面预览" className="aspect-[16/9] w-full object-cover" />

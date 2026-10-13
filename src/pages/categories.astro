@@ -1,6 +1,7 @@
 ---
 import { env } from 'cloudflare:workers';
 import BaseLayout from '@/layouts/BaseLayout.astro';
+import PageHeading from '@/components/PageHeading.astro';
 import { listCategories } from '@/server/db/content';
 
 const db = env.DB;
@@ -8,7 +9,7 @@ const categories = await listCategories(db);
 ---
 
 <BaseLayout title="分类" description="全部分类" active="categories">
-  <div class="rule-label">分类索引</div>
+  <PageHeading title="分类索引" description="循着一个主题，找到感兴趣的下一篇。" meta={`${categories.length} 个分类`} />
   {categories.length === 0 ? (
     <p class="mt-4 py-12 text-sm text-muted">还没有分类。</p>
   ) : (

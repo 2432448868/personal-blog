@@ -62,44 +62,56 @@ function mapPost(row: PostRow): PostSummary {
   };
 }
 
+const PARAM_CHUNK_SIZE = 90;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const groups: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    groups.push(items.slice(index, index + size));
+  }
+  return groups;
+}
+
 async function loadTaxonomy(db: D1Database, postIds: string[]): Promise<Map<string, { categories: Category[]; tags: Tag[] }>> {
   const result = new Map<string, { categories: Category[]; tags: Tag[] }>();
   postIds.forEach((postId) => result.set(postId, { categories: [], tags: [] }));
   if (postIds.length === 0) {
     return result;
   }
-  const marks = placeholders(postIds.length);
-  const [categoryRows, tagRows] = await Promise.all([
-    queryAll<TaxonomyRow>(
-      db,
-      `SELECT pc.post_id, c.id, c.name, c.slug, c.description, c.parent_id, c.sort_order
-       FROM post_categories pc
-       JOIN categories c ON c.id = pc.category_id
-       WHERE pc.post_id IN (${marks}) AND c.deleted_at IS NULL`,
-      postIds
-    ),
-    queryAll<TaxonomyRow>(
-      db,
-      `SELECT pt.post_id, t.id, t.name, t.slug
-       FROM post_tags pt
-       JOIN tags t ON t.id = pt.tag_id
-       WHERE pt.post_id IN (${marks}) AND t.deleted_at IS NULL`,
-      postIds
-    )
-  ]);
-  categoryRows.forEach((row) => {
-    result.get(row.post_id)?.categories.push({
-      id: row.id,
-      name: row.name,
-      slug: row.slug,
-      description: row.description ?? '',
-      parentId: row.parent_id ?? '',
-      sortOrder: row.sort_order ?? 0
+  for (const ids of chunk(postIds, PARAM_CHUNK_SIZE)) {
+    const marks = placeholders(ids.length);
+    const [categoryRows, tagRows] = await Promise.all([
+      queryAll<TaxonomyRow>(
+        db,
+        `SELECT pc.post_id, c.id, c.name, c.slug, c.description, c.parent_id, c.sort_order
+         FROM post_categories pc
+         JOIN categories c ON c.id = pc.category_id
+         WHERE pc.post_id IN (${marks}) AND c.deleted_at IS NULL`,
+        ids
+      ),
+      queryAll<TaxonomyRow>(
+        db,
+        `SELECT pt.post_id, t.id, t.name, t.slug
+         FROM post_tags pt
+         JOIN tags t ON t.id = pt.tag_id
+         WHERE pt.post_id IN (${marks}) AND t.deleted_at IS NULL`,
+        ids
+      )
+    ]);
+    categoryRows.forEach((row) => {
+      result.get(row.post_id)?.categories.push({
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        description: row.description ?? '',
+        parentId: row.parent_id ?? '',
+        sortOrder: row.sort_order ?? 0
+      });
     });
-  });
-  tagRows.forEach((row) => {
-    result.get(row.post_id)?.tags.push({ id: row.id, name: row.name, slug: row.slug });
-  });
+    tagRows.forEach((row) => {
+      result.get(row.post_id)?.tags.push({ id: row.id, name: row.name, slug: row.slug });
+    });
+  }
   return result;
 }
 
@@ -107,15 +119,19 @@ async function loadCommentCounts(db: D1Database, postIds: string[]): Promise<Map
   if (postIds.length === 0) {
     return new Map();
   }
-  const rows = await queryAll<{ post_id: string; comment_count: number }>(
-    db,
-    `SELECT post_id, COUNT(*) AS comment_count
-     FROM comments
-     WHERE deleted_at IS NULL AND status = 'approved' AND post_id IN (${placeholders(postIds.length)})
-     GROUP BY post_id`,
-    postIds
-  );
-  return new Map(rows.map((row) => [row.post_id, Number(row.comment_count)]));
+  const counts = new Map<string, number>();
+  for (const ids of chunk(postIds, PARAM_CHUNK_SIZE)) {
+    const rows = await queryAll<{ post_id: string; comment_count: number }>(
+      db,
+      `SELECT post_id, COUNT(*) AS comment_count
+       FROM comments
+       WHERE deleted_at IS NULL AND status = 'approved' AND post_id IN (${placeholders(ids.length)})
+       GROUP BY post_id`,
+      ids
+    );
+    rows.forEach((row) => counts.set(row.post_id, Number(row.comment_count)));
+  }
+  return counts;
 }
 
 async function decoratePosts(db: D1Database, rows: PostRow[]): Promise<PostSummary[]> {
@@ -228,7 +244,7 @@ export async function getPostById(db: D1Database, id: string): Promise<PostDetai
 }
 
 export async function getRelatedPosts(db: D1Database, post: PostDetail, limit = 3): Promise<PostSummary[]> {
-  const tagIds = post.tags.map((tag) => tag.id);
+  const tagIds = post.tags.map((tag) => tag.id).slice(0, PARAM_CHUNK_SIZE - 4);
   if (tagIds.length === 0) {
     return [];
   }

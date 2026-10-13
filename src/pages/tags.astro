@@ -1,6 +1,7 @@
 ---
 import { env } from 'cloudflare:workers';
 import BaseLayout from '@/layouts/BaseLayout.astro';
+import PageHeading from '@/components/PageHeading.astro';
 import { listTags } from '@/server/db/content';
 
 const db = env.DB;
@@ -9,12 +10,12 @@ const max = Math.max(1, ...tags.map((tag) => tag.postCount ?? 0));
 ---
 
 <BaseLayout title="标签" description="全部标签" active="tags">
-  <div class="rule-label">标签云</div>
+  <PageHeading title="主题拾取" description="不必按顺序读，从一个关键词开始就好。" meta={`${tags.length} 个标签`} />
   {tags.length === 0 ? (
     <p class="mt-4 py-12 text-sm text-muted">还没有标签。</p>
   ) : (
     <>
-      <p class="mt-3 text-sm text-muted">共 {tags.length} 个标签，字号随文章数量变化。</p>
+
       <div class="mt-8 flex flex-wrap items-baseline gap-x-6 gap-y-4">
         {tags.map((tag) => {
           const ratio = (tag.postCount ?? 0) / max;

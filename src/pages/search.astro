@@ -1,11 +1,12 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro';
+import PageHeading from '@/components/PageHeading.astro';
 import SearchApp from '@/components/SearchApp.tsx';
 ---
 
 <BaseLayout title="搜索" description="站内文章搜索">
-  <div class="rule-label">站内搜索</div>
-  <p class="mt-3 max-w-xl text-sm leading-relaxed text-muted">索引在浏览器本地完成匹配，不产生额外服务端请求。支持标题、摘要、标签与分类关键词。</p>
+  <PageHeading title="检索花园" description="标题、摘要、标签、分类，想到什么就搜什么。" />
+
   <div class="mt-8">
     <SearchApp client:load />
   </div>

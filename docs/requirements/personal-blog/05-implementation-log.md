@@ -71,3 +71,64 @@
 - `wrangler.jsonc` 的 `database_id` 仍为占位，部署前必须替换。
 - 娱乐 / 工具箱仅保留导航落点，未实现具体内容模型（需求未给出数据模型）。
 - 未提交 Git、未推送：符合“先不推送代码”的要求。
+
+## 6. 语雀文档批量导入（2026-10-11）
+
+### 6.1 实现
+
+| 项 | 说明 |
+|----|------|
+| 导入脚本 | `scripts/import-yuque.mjs`：解析 `.yuque-manifest.json`；标题取首个 H1 > manifest title > 文件名；slug 唯一化；HTML 清洗（`<img>`→Markdown 图、`<a>`→链接、其余标签剥离，代码围栏原样） |
+| 图片处理 | 相对引用解析到各目录 `assets/`，sharp 转 webp（最长边 1600 / q82），落 `public/yuque-assets/<sha1[0:10]>/` |
+| SQL 产物 | `tmp/yuque-sql/00-taxonomy.sql` + `01~08-posts.sql`；`INSERT … ON CONFLICT(id) DO UPDATE`，分类/标签关联表先 DELETE 再 INSERT |
+| Markdown 渲染 | 重写 `src/lib/markdown.ts`：仅对 marked 的 raw HTML token 转义、放行 `<br>`，修掉代码块二次转义（`List<String>` 被渲染成 `List&lt;String&gt;`） |
+
+### 6.2 导入结果
+
+| 指标 | 值 |
+|------|----|
+| 文章 | 157 篇（`yq_*`）；远程 `posts` 合计 161（含 4 篇种子） |
+| 分类 / 标签 | 新增 6 分类、16 标签（远程累计 10 / 21） |
+| 图片 | 826 个文件、22.18 MB（815 webp + 10 svg + 1 gif），原图 88.1 MB |
+| 缺失图片引用 | 74 处（语雀早期扁平 `assets/image-*.png`，原件不存在，已丢弃为空引用） |
+| 空文档 | 6 篇正文几乎为空（ES / RabbitMQ / Seata / Spring系列 / dockerFile / vue），已导入但内容单薄 |
+
+### 6.3 验证
+
+| 项 | 命令 | 结果 |
+|----|------|------|
+| 类型/语法检查 | `npm run check` | 69 文件，0 errors / 0 warnings / 0 hints |
+| 生产构建 | `npm run build` | 通过 |
+| 本地 D1 导入 | `wrangler d1 execute --local` × 9 | 全部 success |
+| 本地页面 | `/post`、`/post/<slug>` | 200，图片与代码块渲染正常 |
+| 远程 D1 导入 | `wrangler d1 execute --remote` × 9 | 全部 success |
+| 生产部署 | `wrangler deploy` | 795 个资源上传；版本 `cf40cba2-dd55-41a2-80ac-ee93d617e43a` |
+| 线上冒烟 | `/post`、详情页、`/yuque-assets/*.webp` | 200 / 200 / 200 `image/webp` |
+
+### 6.4 备注
+
+- 13 篇 JavaSE 原文 H1 均为「JAVAOOP」，slug 落为 `javaoop`…`javaoop-13`，可读性差；如需可改为按路径生成。
+- `RabbitMQ` ×3、`Servlet` ×2 同名，已自动加 `-2` / `-3` 后缀。
+- 本轮改动（`scripts/import-yuque.mjs`、`src/lib/markdown.ts`、`.gitignore`、`public/yuque-assets/`、`src/components/admin/PostEditor.tsx`）尚未提交 Git。
+## 7. 归档页 500 修复（2026-10-12）
+
+| 项 | 说明 |
+|----|------|
+| 现象 | 线上 `/archive` 返回 500「该网页无法正常运作」，本地同路径同样 500 |
+| 根因 | `decoratePosts → loadTaxonomy / loadCommentCounts` 把全部文章 id 拼进一条 `IN (?, …)`；157+ 个绑定参数超过 D1「单条语句最多 100 个绑定参数」上限。`/post` 分页每页 10 条，所以一直正常 |
+| 修复 | `src/server/db/content.ts` 新增 `chunk()` 与 `PARAM_CHUNK_SIZE = 90`，两处批量查询改为按 90 一批循环执行后合并结果；`getRelatedPosts` 的 tagIds 加 `.slice(0, PARAM_CHUNK_SIZE - 4)` 兜底 |
+| 验证 | `npm run check` 69 文件 0/0/0；本地 `/archive` 500 → 200（161 篇）；部署版本 `4e1804e5-b6e5-4c42-a121-dd1e464f0680`；线上 `/archive` `/search` `/tags` `/categories` 全部 200，归档页渲染 161 条、覆盖 2022–2026 |
+
+补充说明：同类隐患已排查完毕，仓库内 `placeholders()` 仅剩这 3 处调用，全部受 90 上限保护。
+
+## 8. Mermaid 流程图自动渲染（2026-10-12）
+
+| 项 | 说明 |
+|----|------|
+| 能力 | 文章正文中的 ` ```mermaid ` 代码块自动替换为内联 SVG；无 Mermaid 的页面不下载运行时 |
+| 实现 | `src/lib/mermaid-client.ts` 动态加载 `/vendor/mermaid/mermaid.esm.min.mjs`，`MermaidEnhancer.astro` 在文章页/关于页挂载；跟随 6 套主题令牌重绘；失败时回退显示原始代码块 |
+| 兼容处理 | 渲染前自动给含括号、HTML 换行、`{}` 的流程图标签加引号；注释掉 ER 图中不受支持的流程图式 note 行，避免单张图失败拖垮整篇 |
+| 资源同步 | `scripts/sync-mermaid.mjs` 在 `predev` / `prebuild` 把 Mermaid browser ESM + chunks 同步到 `public/vendor/mermaid`（15.70 MB，207 文件，已 gitignore）；构建产物已复核包含 `dist/client/vendor/mermaid` |
+| 阅读工具 | `ReadingTools.tsx` 繁简转换跳过 `SVG`，避免转换后破坏图形文本 |
+| 验证 | `npm run check` 73 文件 0/0/0；`npm run build` 通过；本地 D1 中 21 篇含 Mermaid 文档、117 个代码块逐个 CDP 渲染，SVG 数量与代码块数量一致，0 运行时异常；切夜间主题后重绘成功 |
+| 已知非阻塞项 | `npm run smoke` 中图片上传接口仍为 500（本地未配置 R2 `BUCKET` 绑定；用户已明确暂不做图片上传），与 Mermaid 无关 |
