@@ -85,6 +85,6 @@ const motto = profile.motto || '写下所学，留下所想。';
       <h2 id="invitation-title" data-word-reveal>{Array.from(motto).map(char => <span>{char}</span>)}</h2>
       <div class="invitation-action"><span>如果你也有想法，欢迎留下一句。</span><a href="/guestbook" class="invitation-link" data-magnetic>聊两句 <span aria-hidden="true">↗</span></a></div>
     </section>
-    <GardenMotion client:load />
+    <GardenMotion client:only="react" />
   </div>
 </BaseLayout>
