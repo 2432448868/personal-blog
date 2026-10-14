@@ -13,6 +13,8 @@ export default defineConfig({
   }),
   integrations: [react()],
   vite: {
+    // Check/build must not invalidate optimized dependencies in a running dev server.
+    cacheDir: process.argv.includes('dev') ? 'node_modules/.vite-dev' : 'node_modules/.vite-build',
     plugins: [tailwindcss()]
   },
   server: {

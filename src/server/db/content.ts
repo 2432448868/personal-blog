@@ -31,6 +31,9 @@ interface TaxonomyRow {
 }
 
 export interface PostQuery {
+  search?: string;
+  categoryId?: string;
+  order?: 'updated';
   page?: number;
   pageSize?: number;
   category?: string;
@@ -159,6 +162,14 @@ export async function listPosts(db: D1Database, query: PostQuery = {}): Promise<
     conditions.push('p.status = ?');
     params.push(status);
   }
+  if (query.search?.trim()) {
+    conditions.push('instr(lower(p.title || char(32) || p.summary || char(32) || p.slug), lower(?)) > 0');
+    params.push(query.search.trim().slice(0, 200));
+  }
+  if (query.categoryId) {
+    conditions.push('EXISTS (SELECT 1 FROM post_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.post_id = p.id AND c.id = ? AND c.deleted_at IS NULL)');
+    params.push(query.categoryId);
+  }
   if (query.category) {
     conditions.push('EXISTS (SELECT 1 FROM post_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.post_id = p.id AND c.slug = ? AND c.deleted_at IS NULL)');
     params.push(query.category);
@@ -187,7 +198,7 @@ export async function listPosts(db: D1Database, query: PostQuery = {}): Promise<
      FROM posts p
      LEFT JOIN users u ON u.id = p.author_id
      WHERE ${where}
-     ORDER BY COALESCE(p.published_at, p.created_at) DESC, p.created_at DESC
+     ORDER BY ${query.order === 'updated' ? 'p.updated_at DESC, p.id DESC' : 'COALESCE(p.published_at, p.created_at) DESC, p.created_at DESC, p.id DESC'}
      LIMIT ? OFFSET ?`,
     [...params, pageSize, (page - 1) * pageSize]
   );

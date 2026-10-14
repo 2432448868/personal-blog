@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    ignores: ['dist/**', '.astro/**', '.wrangler/**', 'node_modules/**']
+    ignores: ['dist/**', '.astro/**', '.wrangler/**', 'node_modules/**', 'public/vendor/**', 'tmp/**']
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -29,7 +29,10 @@ export default defineConfig(
         FormData: 'readonly',
         AbortController: 'readonly',
         setTimeout: 'readonly',
-        clearTimeout: 'readonly'
+        clearTimeout: 'readonly',
+        window: 'readonly',
+        document: 'readonly',
+        localStorage: 'readonly'
       }
     },
     rules: {

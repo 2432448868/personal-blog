@@ -46,6 +46,34 @@ const SETTING_KEYS = new Set([
   'site.social_links'
 ]);
 
+function isWebUrl(value: string): boolean {
+  try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
+}
+
+const socialLinksSchema = z.array(z.object({
+  label: z.string().trim().min(1).max(100),
+  url: z.string().max(500).refine(isWebUrl)
+})).max(20);
+
+const settingsSchema = z.object({
+  'profile.name': z.string().max(100),
+  'profile.bio': z.string().max(500),
+  'profile.avatar': z.string().max(500).refine((value) => !value || (value.startsWith('/') && !value.startsWith('//')) || isWebUrl(value), '头像地址必须为站内路径或 http(s) 地址'),
+  'profile.motto': z.string().max(200),
+  'site.announcement': z.string().max(1000),
+  'site.about': z.string().max(20000),
+  'site.icp': z.string().max(100),
+  'site.started_at': z.string().refine((value) => {
+    if (!value) return true;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(value);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, '建站日期必须是有效的 YYYY-MM-DD 日期'),
+  'site.social_links': z.string().max(15000).refine((value) => {
+    try { return socialLinksSchema.safeParse(JSON.parse(value)).success; } catch { return false; }
+  }, '社交链接必须包含名称及有效 http(s) 地址，最多 20 项')
+}).partial();
+
 function toInt(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -61,7 +89,10 @@ admin.get('/admin/posts', async (c) => {
   const result = await listPosts(c.env.DB, {
     page: toInt(query.page, 1),
     pageSize: toInt(query.pageSize, 20),
-    status
+    status,
+    search: query.search?.slice(0, 200),
+    categoryId: query.categoryId,
+    order: query.order === 'updated' ? 'updated' : undefined
   });
   return c.json(ok(result));
 });
@@ -140,7 +171,11 @@ admin.put('/admin/settings', async (c) => {
   if (!body || typeof body !== 'object') {
     return c.json(fail('VALIDATION_ERROR', '请求体格式不正确'), 422);
   }
-  const entries = Object.entries(body).filter(([key]) => SETTING_KEYS.has(key));
+  const parsed = settingsSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json(fail('VALIDATION_ERROR', parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('；')), 422);
+  }
+  const entries = Object.entries(parsed.data).filter(([key]) => SETTING_KEYS.has(key));
   if (entries.length === 0) {
     return c.json(fail('VALIDATION_ERROR', '没有可更新的配置项'), 422);
   }
@@ -152,12 +187,13 @@ admin.put('/admin/settings', async (c) => {
 });
 
 admin.get('/admin/stats', async (c) => {
-  const [posts, drafts, comments, pending, guestbook] = await Promise.all([
+  const [posts, drafts, comments, pending, guestbook, pendingGuestbook] = await Promise.all([
     queryOne<{ total: number }>(c.env.DB, "SELECT COUNT(*) AS total FROM posts WHERE status = 'published' AND deleted_at IS NULL"),
     queryOne<{ total: number }>(c.env.DB, "SELECT COUNT(*) AS total FROM posts WHERE status = 'draft' AND deleted_at IS NULL"),
     queryOne<{ total: number }>(c.env.DB, 'SELECT COUNT(*) AS total FROM comments WHERE deleted_at IS NULL'),
     queryOne<{ total: number }>(c.env.DB, "SELECT COUNT(*) AS total FROM comments WHERE status = 'pending' AND deleted_at IS NULL"),
-    queryOne<{ total: number }>(c.env.DB, 'SELECT COUNT(*) AS total FROM guestbook WHERE deleted_at IS NULL')
+    queryOne<{ total: number }>(c.env.DB, 'SELECT COUNT(*) AS total FROM guestbook WHERE deleted_at IS NULL'),
+    queryOne<{ total: number }>(c.env.DB, "SELECT COUNT(*) AS total FROM guestbook WHERE status = 'pending' AND deleted_at IS NULL")
   ]);
   return c.json(
     ok({
@@ -165,6 +201,7 @@ admin.get('/admin/stats', async (c) => {
       draftPosts: Number(drafts?.total ?? 0),
       comments: Number(comments?.total ?? 0),
       pendingComments: Number(pending?.total ?? 0),
+      pendingGuestbook: Number(pendingGuestbook?.total ?? 0),
       guestbook: Number(guestbook?.total ?? 0)
     })
   );

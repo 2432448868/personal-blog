@@ -1,196 +1,212 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { marked } from 'marked';
-import type { PostDetail, SessionUser } from '@/types/domain';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PostDetail, PostStatus, SessionUser } from '@/types/domain';
 import { defaultCoverSvg } from '@/lib/default-cover';
 import { enhanceMermaid, observeThemeChanges } from '@/lib/mermaid-client';
+import { renderMarkdown } from '@/lib/markdown';
+import { countWords } from '@/lib/format';
+import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_BYTES } from '@/lib/constants';
+import { adminRequest, adminWrite, errorMessage } from '@/lib/admin-api';
+import AdminShell from './AdminShell';
 
-interface Props {
-  postId: string | null;
-}
+interface Props { postId: string | null }
+interface TaxonomyOption { id: string; name: string }
+interface Draft { title: string; slug: string; summary: string; content: string; coverImage: string; status: PostStatus; categoryIds: string[]; tagIds: string[] }
+interface Backup { draft: Draft; savedAt: string }
+const EMPTY: Draft = { title: '', slug: '', summary: '', content: '', coverImage: '', status: 'draft', categoryIds: [], tagIds: [] };
 
-interface TaxonomyOption {
-  id: string;
-  name: string;
+function validBackup(value: unknown): value is Backup {
+  if (!value || typeof value !== 'object') return false;
+  const backup = value as Partial<Backup>;
+  const draft = backup.draft;
+  return typeof backup.savedAt === 'string' && !!draft &&
+    ['title', 'slug', 'summary', 'content', 'coverImage'].every((key) => typeof draft[key as keyof Draft] === 'string') &&
+    ['draft', 'published'].includes(draft.status) &&
+    [draft.categoryIds, draft.tagIds].every((ids) => Array.isArray(ids) && ids.every((id) => typeof id === 'string'));
 }
 
 export default function PostEditor({ postId }: Props) {
-  const [token, setToken] = useState('');
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [categories, setCategories] = useState<TaxonomyOption[]>([]);
   const [tags, setTags] = useState<TaxonomyOption[]>([]);
-  const [title, setTitle] = useState('');
-  const [slug, setSlug] = useState('');
-  const [summary, setSummary] = useState('');
-  const [content, setContent] = useState('');
-  const [coverImage, setCoverImage] = useState('');
-  const [status, setStatus] = useState<'draft' | 'published'>('draft');
-  const [categoryIds, setCategoryIds] = useState<string[]>([]);
-  const [tagIds, setTagIds] = useState<string[]>([]);
-  const [preview, setPreview] = useState(false);
+  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [saved, setSaved] = useState('');
+  const [backup, setBackup] = useState<Backup | null>(null);
+  const [backupStatus, setBackupStatus] = useState('');
+  const [mode, setMode] = useState<'edit' | 'split' | 'preview'>('split');
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [ready, setReady] = useState(false);
+  const [retry, setRetry] = useState(0);
   const previewRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const uploadTarget = useRef<'body' | 'cover'>('body');
+  const allowNavigation = useRef(false);
+  const lock = useRef(false);
+  const uploadLock = useRef(false);
+  const storageKey = user ? `admin-draft:${user.id}:${postId ?? 'new'}` : '';
+  const snapshot = JSON.stringify(draft);
+  const dirty = ready && snapshot !== saved;
 
   useEffect(() => {
+    const controller = new AbortController();
+    setReady(false); setError('');
     (async () => {
-      const meResponse = await fetch('/api/auth/me', { headers: { Accept: 'application/json' } });
-      const me = (await meResponse.json()) as { data: { user: SessionUser | null } };
-      if (!me.data?.user) {
-        window.location.href = '/admin/login';
-        return;
-      }
-      setToken(me.data.user.csrfToken);
-      const taxResponse = await fetch('/api/admin/taxonomy', { headers: { Accept: 'application/json' } });
-      const tax = (await taxResponse.json()) as { data: { categories: TaxonomyOption[]; tags: TaxonomyOption[] } };
-      setCategories(tax.data.categories);
-      setTags(tax.data.tags);
-      if (postId) {
-        const detailResponse = await fetch(`/api/admin/posts/${postId}`, { headers: { Accept: 'application/json' } });
-        if (detailResponse.ok) {
-          const detail = (await detailResponse.json()) as { data: PostDetail };
-          setTitle(detail.data.title);
-          setSlug(detail.data.slug);
-          setSummary(detail.data.summary);
-          setContent(detail.data.content);
-          setCoverImage(detail.data.coverImage);
-          setStatus(detail.data.status);
-          setCategoryIds(detail.data.categories.map((item) => item.id));
-          setTagIds(detail.data.tags.map((item) => item.id));
-        } else {
-          setMessage('文章不存在或无权访问');
-        }
-      }
+      const me = await adminRequest<{ user: SessionUser | null }>('/api/auth/me', { signal: controller.signal });
+      if (!me.user) { window.location.assign('/admin/login'); return; }
+      if (me.user.role !== 'admin') throw new Error('当前账号没有管理员权限');
+      const taxonomy = await adminRequest<{ categories: TaxonomyOption[]; tags: TaxonomyOption[] }>('/api/admin/taxonomy', { signal: controller.signal });
+      const detail = postId ? await adminRequest<PostDetail>(`/api/admin/posts/${postId}`, { signal: controller.signal }) : null;
+      if (controller.signal.aborted) return;
+      const initial: Draft = detail ? { title: detail.title, slug: detail.slug, summary: detail.summary, content: detail.content, coverImage: detail.coverImage, status: detail.status, categoryIds: detail.categories.map((item) => item.id), tagIds: detail.tags.map((item) => item.id) } : { ...EMPTY };
+      setUser(me.user); setCategories(taxonomy.categories); setTags(taxonomy.tags);
+      setDraft(initial); setSaved(JSON.stringify(initial));
+      try {
+        const cached: unknown = JSON.parse(localStorage.getItem(`admin-draft:${me.user.id}:${postId ?? 'new'}`) || 'null');
+        if (validBackup(cached) && JSON.stringify(cached.draft) !== JSON.stringify(initial)) setBackup(cached);
+      } catch { setBackupStatus('本地备份不可用，请及时保存到服务端'); }
       setReady(true);
-    })().catch(() => setMessage('初始化失败，请刷新页面'));
-  }, [postId]);
+    })().catch((reason: unknown) => { if (!controller.signal.aborted) setError(errorMessage(reason)); });
+    return () => controller.abort();
+  }, [postId, retry]);
+
+  useEffect(() => {
+    if (!ready || !storageKey || backup) return;
+    if (!dirty) {
+      try { localStorage.removeItem(storageKey); }
+      catch { setBackupStatus('旧备份未能清除'); }
+      return;
+    }
+    setBackupStatus('正在备份到本机…');
+    const timer = window.setTimeout(() => {
+      try {
+        const savedAt = new Date().toISOString();
+        localStorage.setItem(storageKey, JSON.stringify({ draft: JSON.parse(snapshot) as Draft, savedAt }));
+        setBackupStatus(`本机备份 ${new Date(savedAt).toLocaleTimeString('zh-CN')} · 尚未保存到服务端`);
+      } catch { setBackupStatus('本地备份失败，请立即保存到服务端'); }
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [ready, dirty, storageKey, snapshot, backup]);
+
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (!dirty || allowNavigation.current) return;
+      if (storageKey && !backup) {
+        try { localStorage.setItem(storageKey, JSON.stringify({ draft: JSON.parse(snapshot) as Draft, savedAt: new Date().toISOString() })); } catch { /* Leave warning remains active if storage is full. */ }
+      }
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty, storageKey, snapshot, backup]);
 
   const rendered = useMemo(() => {
-    try {
-      return marked.parse(content) as string;
-    } catch {
-      return '<p>Markdown 解析失败</p>';
-    }
-  }, [content]);
+    if (typeof window === 'undefined') return '';
+    // Use the site's Markdown renderer and reject unsafe link/image protocols in preview.
+    const doc = new DOMParser().parseFromString(renderMarkdown(draft.content), 'text/html');
+    doc.querySelectorAll('a[href], img[src]').forEach((node) => {
+      const attribute = node.tagName === 'A' ? 'href' : 'src';
+      try {
+        if (!['http:', 'https:'].includes(new URL(node.getAttribute(attribute) ?? '', window.location.origin).protocol)) node.removeAttribute(attribute);
+      } catch { node.removeAttribute(attribute); }
+      if (node.tagName === 'A') { node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener noreferrer'); }
+    });
+    return doc.body.innerHTML;
+  }, [draft.content]);
 
   useEffect(() => {
-    if (!preview || !previewRef.current) {
-      return;
-    }
+    if (mode === 'edit' || !previewRef.current) return;
     void enhanceMermaid(previewRef.current);
     observeThemeChanges();
-  }, [preview, rendered]);
+  }, [mode, rendered, ready]);
 
-  function toggle(list: string[], id: string, setter: (value: string[]) => void) {
-    setter(list.includes(id) ? list.filter((item) => item !== id) : [...list, id]);
-  }
-
-  async function save(nextStatus: 'draft' | 'published') {
-    if (!token) {
-      return;
-    }
-    if (!title.trim() || !content.trim()) {
-      setMessage('标题和正文不能为空');
-      return;
-    }
-    setSaving(true);
-    setMessage('');
+  const save = useCallback(async (nextStatus: PostStatus) => {
+    if (!user || !ready || lock.current || uploadLock.current) return;
+    if (backup) { setError('请先恢复或丢弃本地备份，再保存文章'); return; }
+    if (!draft.title.trim() || !draft.content.trim()) { setError('标题和正文不能为空'); return; }
+    if (draft.status === 'published' && nextStatus === 'draft' && !window.confirm('保存为草稿会下线当前已发布文章，确认继续？')) return;
+    lock.current = true; setSaving(true); setMessage(''); setError('');
     try {
-      const method = postId ? 'PUT' : 'POST';
-      const url = postId ? `/api/admin/posts/${postId}` : '/api/admin/posts';
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ title, slug, summary, content, coverImage, status: nextStatus, categoryIds, tagIds })
-      });
-      const payload = (await response.json()) as { message: string; data: PostDetail | null };
-      if (!response.ok || !payload.data) {
-        setMessage(payload.message || '保存失败');
-        return;
+      const submitted = { ...draft, status: nextStatus };
+      const detail = await adminRequest<PostDetail>(postId ? `/api/admin/posts/${postId}` : '/api/admin/posts', adminWrite(user.csrfToken, postId ? 'PUT' : 'POST', submitted));
+      const normalized: Draft = { ...submitted, title: detail.title, slug: detail.slug, summary: detail.summary, content: detail.content, coverImage: detail.coverImage };
+      setDraft(normalized); setSaved(JSON.stringify(normalized));
+      setMessage(nextStatus === 'published' ? '文章已保存并发布' : '草稿已保存到服务端');
+      try { localStorage.removeItem(storageKey); setBackupStatus('已保存到服务端'); }
+      catch { setBackupStatus('已保存到服务端，本机旧备份未能清除'); }
+      if (!postId) { allowNavigation.current = true; window.location.replace(`/admin/editor?id=${detail.id}`); }
+    } catch (reason) { setError(errorMessage(reason)); }
+    finally { lock.current = false; setSaving(false); }
+  }, [user, ready, backup, draft, postId, storageKey]);
+
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void save(draft.status); }
+    };
+    window.addEventListener('keydown', shortcut);
+    return () => window.removeEventListener('keydown', shortcut);
+  }, [save, draft.status]);
+
+  function update<K extends keyof Draft>(key: K, value: Draft[K]) { setDraft((current) => ({ ...current, [key]: value })); }
+  function insert(before: string, after = '', placeholder = '文字') {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? draft.content.length;
+    const end = textarea?.selectionEnd ?? start;
+    const selection = draft.content.slice(start, end) || placeholder;
+    update('content', draft.content.slice(0, start) + before + selection + after + draft.content.slice(end));
+    window.requestAnimationFrame(() => { textareaRef.current?.focus(); textareaRef.current?.setSelectionRange(start + before.length, start + before.length + selection.length); });
+  }
+  async function upload(file: File, target: 'body' | 'cover') {
+    if (!user || lock.current || uploadLock.current) return;
+    if (!ALLOWED_IMAGE_TYPES.has(file.type) || file.size > MAX_UPLOAD_BYTES) { setError('仅支持 JPG、PNG、WebP、GIF，单张图片不超过 5MB'); return; }
+    uploadLock.current = true; setUploading(true); setError('');
+    try {
+      const form = new FormData(); form.append('file', file);
+      const result = await adminRequest<{ url: string }>('/api/admin/uploads', { method: 'POST', headers: { 'X-CSRF-Token': user.csrfToken }, body: form });
+      if (target === 'cover') update('coverImage', result.url);
+      else {
+        const start = textareaRef.current?.selectionStart;
+        setDraft((current) => {
+          const position = start ?? current.content.length;
+          return { ...current, content: current.content.slice(0, position) + `\n![图片](${result.url})\n` + current.content.slice(position) };
+        });
       }
-      setStatus(nextStatus);
-      setMessage('保存成功');
-      if (!postId) {
-        window.location.href = `/admin/editor?id=${payload.data.id}`;
-      }
-    } catch {
-      setMessage('保存失败，请稍后重试');
-    } finally {
-      setSaving(false);
-    }
+      setMessage(target === 'cover' ? '封面已上传，保存文章后生效' : '图片已插入正文');
+    } catch (reason) { setError(errorMessage(reason)); }
+    finally { uploadLock.current = false; setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+  }
+  function resolveBackup(restore: boolean) {
+    if (!backup) return;
+    if (!restore && !window.confirm('确认丢弃本机未保存的备份？')) return;
+    if (restore) { setDraft(backup.draft); setMessage('已恢复到编辑器，请核对后手动保存；线上文章未被修改'); }
+    else { try { localStorage.removeItem(storageKey); } catch { setBackupStatus('旧备份未能清除'); } }
+    setBackup(null);
   }
 
-  if (!ready) {
-    return <p className="text-sm text-muted">正在加载编辑器…</p>;
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <a href="/admin" className="btn btn-ghost">← 返回后台</a>
-        <span className="chip">{status === 'published' ? '已发布' : '草稿'}</span>
-        <div className="ml-auto flex flex-wrap gap-2">
-          <button type="button" className="btn" onClick={() => setPreview((value) => !value)}>{preview ? '编辑' : '预览'}</button>
-          <button type="button" className="btn" onClick={() => save('draft')} disabled={saving}>保存草稿</button>
-          <button type="button" className="btn btn-primary" onClick={() => save('published')} disabled={saving}>{saving ? '保存中…' : '发布'}</button>
-        </div>
-      </div>
-
-      {message && <p className="rounded-[3px] border border-line bg-paper-soft px-3 py-2 text-sm text-accent">{message}</p>}
-
-      <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <div className="space-y-3">
-          <input className="field text-lg" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="文章标题" maxLength={200} />
-          {preview ? (
-            <div ref={previewRef} className="card prose-editorial min-h-[32rem] p-5" dangerouslySetInnerHTML={{ __html: rendered }} />
-          ) : (
-            <textarea className="field min-h-[32rem] resize-y font-mono text-sm" value={content} onChange={(event) => setContent(event.target.value)} placeholder="使用 Markdown 编写正文…" />
-          )}
-        </div>
-
-        <aside className="space-y-3">
-          <div className="card space-y-3 p-4">
-            <label className="block text-xs text-muted">URL 路径（留空自动生成）</label>
-            <input className="field" value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="my-first-post" maxLength={80} />
-
-            <label className="block text-xs text-muted">摘要</label>
-            <textarea className="field min-h-20 resize-y" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="列表与 SEO 使用的摘要" maxLength={500} />
-
-            <label className="block text-xs text-muted">封面图（留空则用默认封面）</label>
-            <input className="field" value={coverImage} onChange={(event) => setCoverImage(event.target.value)} placeholder="https://… 图片外链，留空用默认封面" />
-            <div className="overflow-hidden rounded-[3px] border border-line bg-paper-soft">
-              {coverImage.trim() ? (
-                <img src={coverImage} alt="封面预览" className="aspect-[16/9] w-full object-cover" />
-              ) : (
-                <span className="block aspect-[16/9] w-full" aria-hidden="true" dangerouslySetInnerHTML={{ __html: defaultCoverSvg(title) }} />
-              )}
-            </div>
+  return <AdminShell active="posts" title={postId ? '编辑文章' : '新的记录'} description="专心写作。修改自动备份到本机，发布始终由你决定。" userName={user?.displayName || user?.username} actions={ready && <><button type="button" className="btn" disabled={saving || uploading || !!backup} onClick={() => save('draft')}>保存草稿</button><button type="button" className="btn btn-primary" disabled={saving || uploading || !!backup} onClick={() => save('published')}>{saving ? '保存中…' : draft.status === 'published' ? '更新文章' : '发布文章'}</button></>}>
+    {error && <div role="alert" className="admin-notice"><span>{error}</span>{!ready && <button type="button" className="btn" onClick={() => setRetry((value) => value + 1)}>重试</button>}</div>}
+    {message && <p role="status" className="admin-notice">{message}</p>}
+    {!ready ? <div role="status" className="admin-empty">{error ? '编辑器未就绪，请重试。' : '正在准备编辑器…'}</div> : <>
+      {backup && <div className="admin-notice"><div>发现本机未保存备份（{new Date(backup.savedAt).toLocaleString('zh-CN')}）。<p className="text-xs text-muted">可能早于线上版本，恢复仅替换编辑内容，不会自动发布。</p></div><div className="flex shrink-0 gap-2"><button type="button" className="btn" onClick={() => resolveBackup(true)}>恢复备份</button><button type="button" className="btn btn-ghost" onClick={() => resolveBackup(false)}>丢弃</button></div></div>}
+      <input ref={fileRef} type="file" hidden accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file, uploadTarget.current); }} />
+      <fieldset disabled={saving || uploading || !!backup} className="admin-editor-layout">
+        <section className="admin-panel">
+          <input className="admin-editor-title" aria-label="文章标题" value={draft.title} onChange={(event) => update('title', event.target.value)} placeholder="给这篇记录起个名字…" maxLength={200} />
+          <div className="admin-editor-toolbar"><button type="button" onClick={() => { setMode('edit'); insert('**', '**'); }} aria-label="插入粗体"><strong>B</strong></button><button type="button" onClick={() => { setMode('edit'); insert('## ', '', '标题'); }}>H2</button><button type="button" onClick={() => { setMode('edit'); insert('- ', '', '列表项'); }}>列表</button><button type="button" onClick={() => { setMode('edit'); insert('```\n', '\n```', '代码'); }}>代码</button><button type="button" onClick={() => { setMode('edit'); insert('[', '](https://)', '链接文字'); }}>链接</button><button type="button" disabled={uploading} onClick={() => { uploadTarget.current = 'body'; fileRef.current?.click(); }}>{uploading ? '上传中…' : '图片'}</button><div className="ml-auto flex gap-1">{(['edit', 'split', 'preview'] as const).map((value) => <button type="button" key={value} aria-pressed={mode === value} onClick={() => setMode(value)}>{({ edit: '编辑', split: '分栏', preview: '预览' })[value]}</button>)}</div></div>
+          <div className="admin-editor-content" data-mode={mode}>
+            {mode !== 'preview' && <textarea ref={textareaRef} className="admin-editor-textarea" aria-label="Markdown 正文" value={draft.content} onChange={(event) => update('content', event.target.value)} onPaste={(event) => { const image = Array.from(event.clipboardData.files).find((file) => file.type.startsWith('image/')); if (image) { event.preventDefault(); void upload(image, 'body'); } }} placeholder="用 Markdown 写下你的记录，支持粘贴图片…" />}
+            {mode !== 'edit' && <div ref={previewRef} className="admin-editor-preview prose-editorial" dangerouslySetInnerHTML={{ __html: rendered || '<p>正文预览将在这里呈现。</p>' }} />}
           </div>
-
-          <div className="card space-y-2 p-4">
-            <p className="text-xs text-muted">分类</p>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((category) => (
-                <button key={category.id} type="button" onClick={() => toggle(categoryIds, category.id, setCategoryIds)} className={`chip ${categoryIds.includes(category.id) ? 'border-accent text-accent' : ''}`}>
-                  {category.name}
-                </button>
-              ))}
-              {categories.length === 0 && <span className="text-xs text-muted">暂无分类</span>}
-            </div>
-          </div>
-
-          <div className="card space-y-2 p-4">
-            <p className="text-xs text-muted">标签</p>
-            <div className="flex flex-wrap gap-2">
-              {tags.map((tag) => (
-                <button key={tag.id} type="button" onClick={() => toggle(tagIds, tag.id, setTagIds)} className={`chip ${tagIds.includes(tag.id) ? 'border-accent text-accent' : ''}`}>
-                  #{tag.name}
-                </button>
-              ))}
-              {tags.length === 0 && <span className="text-xs text-muted">暂无标签</span>}
-            </div>
-          </div>
+          <div className="admin-editor-bottom"><span>{countWords(draft.content)} 字 · Ctrl / ⌘ + S 保存当前状态</span><span role="status">{dirty ? backupStatus || '有未保存修改' : '与服务端同步'}</span></div>
+        </section>
+        <aside className="admin-editor-aside">
+          <section className="admin-panel"><h2>发布信息 <span className="admin-status ml-2" data-status={draft.status}>{draft.status === 'published' ? '已发布' : '草稿'}</span></h2><label htmlFor="post-slug" className="admin-field-label">文章路径</label><input id="post-slug" className="field" value={draft.slug} onChange={(event) => update('slug', event.target.value)} placeholder="留空自动生成" maxLength={80} /><label htmlFor="post-summary" className="admin-field-label mt-4">摘要</label><textarea id="post-summary" className="field min-h-28" value={draft.summary} onChange={(event) => update('summary', event.target.value)} maxLength={500} placeholder="一句话介绍这篇文章…" /><span className="admin-field-help">用于文章列表与 SEO · {draft.summary.length}/500</span></section>
+          <section className="admin-panel"><h2>文章封面</h2><div className="overflow-hidden rounded-[10px] border border-line mb-3">{draft.coverImage.trim() ? <img src={draft.coverImage} alt="封面预览" className="aspect-[16/9] w-full object-cover" /> : <span className="block aspect-[16/9] w-full" aria-hidden="true" dangerouslySetInnerHTML={{ __html: defaultCoverSvg(draft.title) }} />}</div><input className="field" aria-label="封面图片地址" value={draft.coverImage} onChange={(event) => update('coverImage', event.target.value)} placeholder="图片地址，留空用默认封面" maxLength={500} /><button type="button" className="btn mt-3 w-full" disabled={uploading} onClick={() => { uploadTarget.current = 'cover'; fileRef.current?.click(); }}>上传封面</button><span className="admin-field-help">JPG / PNG / WebP / GIF · 最大 5MB</span></section>
+          {([{ key: 'categoryIds', label: '分类', items: categories }, { key: 'tagIds', label: '标签', items: tags }] as const).map(({ key, label, items }) => <section className="admin-panel" key={key}><h2>{label}</h2><div className="admin-chip-list">{items.map((item) => <button type="button" className={`chip ${draft[key].includes(item.id) ? 'border-accent text-accent bg-accent-soft' : ''}`} aria-pressed={draft[key].includes(item.id)} key={item.id} onClick={() => update(key, draft[key].includes(item.id) ? draft[key].filter((id) => id !== item.id) : [...draft[key], item.id])}>{item.name}</button>)}{!items.length && <span className="text-xs text-muted">暂无{label}</span>}</div></section>)}
         </aside>
-      </div>
-    </div>
-  );
+      </fieldset>
+    </>}
+  </AdminShell>;
 }
