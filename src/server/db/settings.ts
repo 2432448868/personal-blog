@@ -6,7 +6,7 @@ import { queryAll, queryOne } from './client';
 const DEFAULT_PROFILE: SiteProfile = {
   name: 'Kale的数字花园',
   bio: '记录技术、阅读和生活的个人博客。',
-  avatar: 'https://github.com/2432448868.png?size=280',
+  avatar: 'https://github.com/KellonWww.png?size=280',
   motto: '把日子码成可检索的形状。',
   announcement: '',
   about: '',
